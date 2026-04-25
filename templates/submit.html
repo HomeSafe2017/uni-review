@@ -372,65 +372,54 @@ async function checkDuplicate() {
 
 // ── 自动定位 ──
 async function detectLocation() {
+    const btn = event.target;
+    btn.textContent = '📍 定位中...';
+    const locationList = document.getElementById('nearbySchoolsList');
+    const container = document.getElementById('nearbySchoolsContainer');
+    
+    let results = [];
+    
+    // 方案1：浏览器精确定位
     if (navigator.geolocation) {
         try {
             const pos = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, enableHighAccuracy: true });
             });
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            const resp = await fetch(`/api/nearby_schools?lat=${lat}&lng=${lng}`);
-            const data = await resp.json();
-            if (data.length > 0) {
-                showNearbySchools(data);
-            } else {
-                alert('附近未找到学校，请手动搜索');
-            }
-            return;
+            const resp = await fetch(`/api/nearby_schools?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`);
+            results = await resp.json();
         } catch(e) {
+            // 浏览器定位失败（HTTPS限制或用户拒绝），走IP定位
         }
     }
-    try {
-        const resp = await fetch('/api/detect_location');
-        const data = await resp.json();
-        if (data.length > 0) {
-            showNearbySchools(data);
-        } else {
-            alert('定位失败，请手动搜索学校');
-        }
-    } catch(e) {
+    
+    // 方案2：IP定位
+    if (results.length === 0) {
+        try {
+            const resp = await fetch('/api/detect_location');
+            results = await resp.json();
+        } catch(e) {}
+    }
+    
+    btn.textContent = '📍 自动定位我的学校';
+    
+    if (results.length === 0) {
         alert('定位失败，请手动搜索学校');
+        return;
     }
-}
-
-function showNearbySchools(schools) {
-    const container = document.getElementById('nearbySchoolsContainer');
-    container.innerHTML = schools.map(s => {
-        const campusText = s.campus_name ? ` (${s.campus_name} · ${s.distance.toFixed(1)}km)` : ` (${s.distance.toFixed(1)}km)`;
-        return `<button type="button" onclick="selectSchool(${s.id}, '${s.name.replace(/'/g, "\\'")}', '${(s.province||'') + ' ' + (s.city||'')}', ${s.campus_name ? "'" + s.campus_name.replace(/'/g, "\\'") + "'" : 'null'}, ${s.distance})"
-                    class="w-full text-left px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-400 transition-all text-sm">
-                📍 ${s.name}${campusText}
+    
+    // 展示选择列表
+    container.innerHTML = results.map(s => {
+        const dist = s.distance < 1 ? Math.round(s.distance * 1000) + 'm' : s.distance.toFixed(1) + 'km';
+        const campus = s.campus_name ? ` · ${s.campus_name}` : '';
+        const escapedName = (s.name||'').replace(/'/g, "\\'");
+        const escapedCampus = s.campus_name ? `'${s.campus_name.replace(/'/g, "\\'")}'` : 'null';
+        return `<button type="button" onclick="selectSchool(${s.id}, '${escapedName}', '${(s.province||'')+' '+(s.city||'')}', ${escapedCampus}, ${s.distance})"
+                    class="w-full text-left px-3 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-400 transition-all text-sm flex justify-between items-center">
+                <span>📍 ${s.name}${campus}</span>
+                <span class="text-xs text-gray-400">${dist}</span>
             </button>`;
     }).join('');
-    document.getElementById('nearbySchoolsList').classList.remove('hidden');
-}
-            return;
-        } catch(e) {
-            // 浏览器定位失败，尝试IP定位
-        }
-    }
-    // 方案2：IP定位
-    try {
-        const resp = await fetch('/api/detect_location');
-        const data = await resp.json();
-        if (data.length > 0) {
-            showNearbySchools(data);
-        } else {
-            alert('定位失败，请手动搜索学校');
-        }
-    } catch(e) {
-        alert('定位失败，请手动搜索学校');
-    }
+    locationList.classList.remove('hidden');
 }
 
 // ── 字数统计 ──

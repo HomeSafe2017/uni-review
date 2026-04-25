@@ -637,51 +637,9 @@ def api_nearby_schools():
     """根据经纬度查找附近的学校（支持多校区）"""
     lat = request.args.get("lat", type=float)
     lng = request.args.get("lng", type=float)
-    radius = request.args.get("radius", default=100, type=float)
     if lat is None or lng is None:
         return jsonify({"error": "需要 lat 和 lng 参数"}), 400
-
-    db = get_db()
-    rows = db.execute("""
-        WITH campus_matches AS (
-            SELECT s.id, s.name, s.province, s.city, c.name as campus_name,
-                   (6371 * acos(
-                       cos(radians(?)) * cos(radians(c.latitude)) *
-                       cos(radians(c.longitude) - radians(?)) +
-                       sin(radians(?)) * sin(radians(c.latitude))
-                   )) as distance
-            FROM campuses c
-            JOIN schools s ON c.school_id = s.id
-            WHERE c.latitude IS NOT NULL
-        ),
-        school_matches AS (
-            SELECT s.id, s.name, s.province, s.city, NULL as campus_name,
-                   (6371 * acos(
-                       cos(radians(?)) * cos(radians(s.latitude)) *
-                       cos(radians(s.longitude) - radians(?)) +
-                       sin(radians(?)) * sin(radians(s.latitude))
-                   )) as distance
-            FROM schools s
-            WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
-              AND s.id NOT IN (SELECT school_id FROM campuses)
-        ),
-        all_matches AS (
-            SELECT * FROM campus_matches WHERE distance < ?
-            UNION
-            SELECT * FROM school_matches WHERE distance < ?
-        ),
-        ranked AS (
-            SELECT id, name, province, city, campus_name, distance,
-                   ROW_NUMBER() OVER (PARTITION BY id ORDER BY distance) as rn
-            FROM all_matches
-        )
-        SELECT id, name, province, city, campus_name, distance
-        FROM ranked
-        WHERE rn = 1
-        ORDER BY distance
-        LIMIT 10
-    """, (lat, lng, lat, lat, lng, lat, radius, radius)).fetchall()
-    return jsonify([dict(r) for r in rows])
+    return jsonify(_find_nearby_schools(lat, lng))
 
 
 @app.route("/api/detect_location")
@@ -699,49 +657,60 @@ def api_detect_location():
         data = json.loads(resp.read())
         if data.get("status") == "success":
             lat, lng = data["lat"], data["lon"]
-            db = get_db()
-            nearby = db.execute("""
-                WITH campus_matches AS (
-                    SELECT s.id, s.name, s.province, s.city, c.name as campus_name,
-                           (6371 * acos(
-                               cos(radians(?)) * cos(radians(c.latitude)) *
-                               cos(radians(c.longitude) - radians(?)) +
-                               sin(radians(?)) * sin(radians(c.latitude))
-                           )) as distance
-                    FROM campuses c
-                    JOIN schools s ON c.school_id = s.id
-                ),
-                school_matches AS (
-                    SELECT s.id, s.name, s.province, s.city, NULL as campus_name,
-                           (6371 * acos(
-                               cos(radians(?)) * cos(radians(s.latitude)) *
-                               cos(radians(s.longitude) - radians(?)) +
-                               sin(radians(?)) * sin(radians(s.latitude))
-                           )) as distance
-                    FROM schools s
-                    WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
-                      AND s.id NOT IN (SELECT school_id FROM campuses)
-                ),
-                all_matches AS (
-                    SELECT * FROM campus_matches
-                    UNION
-                    SELECT * FROM school_matches
-                ),
-                ranked AS (
-                    SELECT id, name, province, city, campus_name, distance,
-                           ROW_NUMBER() OVER (PARTITION BY id ORDER BY distance) as rn
-                    FROM all_matches
-                )
-                SELECT id, name, province, city, campus_name, distance
-                FROM ranked
-                WHERE rn = 1
-                ORDER BY distance
-                LIMIT 5
-            """, (lat, lng, lat, lat, lng, lat)).fetchall()
-            return jsonify([dict(r) for r in nearby])
+            # Reuse nearby_schools logic by calling it internally
+            return api_nearby_schools.__wrapped__(lat, lng) if hasattr(api_nearby_schools, '__wrapped__') else jsonify(_find_nearby_schools(lat, lng))
     except Exception as e:
         print(f"IP定位失败: {e}")
     return jsonify([])
+
+
+def _find_nearby_schools(lat, lng):
+    """共享的附近学校查询逻辑"""
+    db = get_db()
+    haversine = """(6371 * acos(
+        CASE WHEN abs(cos(radians(?)) * cos(radians(LAT)) *
+            cos(radians(LNG) - radians(?)) +
+            sin(radians(?)) * sin(radians(LAT))) > 1
+        THEN sign(cos(radians(?)) * cos(radians(LAT)) *
+            cos(radians(LNG) - radians(?)) +
+            sin(radians(?)) * sin(radians(LAT)))
+        ELSE cos(radians(?)) * cos(radians(LAT)) *
+            cos(radians(LNG) - radians(?)) +
+            sin(radians(?)) * sin(radians(LAT))
+        END))"""
+
+    h_campus = haversine.replace("LAT", "c.latitude").replace("LNG", "c.longitude")
+    h_school = haversine.replace("LAT", "s.latitude").replace("LNG", "s.longitude")
+
+    campus_rows = db.execute(f"""
+        SELECT s.id, s.name, s.province, s.city, s.type, s.level,
+               c.name AS campus_name,
+               {h_campus} as distance
+        FROM campuses c JOIN schools s ON c.school_id = s.id
+        ORDER BY distance LIMIT 30
+    """, (lat, lng, lat, lat, lng, lat, lat, lng, lat)).fetchall()
+
+    campus_school_ids = [r["id"] for r in campus_rows]
+    ph = ",".join(["?"] * len(campus_school_ids)) if campus_school_ids else "0"
+    school_rows = db.execute(f"""
+        SELECT s.id, s.name, s.province, s.city, s.type, s.level,
+               NULL AS campus_name,
+               {h_school} as distance
+        FROM schools s
+        WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+          AND s.id NOT IN ({ph})
+        ORDER BY distance LIMIT 20
+    """, (lat, lng, lat, lat, lng, lat, lat, lng, lat) + tuple(campus_school_ids)).fetchall()
+
+    seen = {}
+    for r in list(campus_rows) + list(school_rows):
+        d = dict(r)
+        sid = d["id"]
+        if sid not in seen or d["distance"] < seen[sid]["distance"]:
+            seen[sid] = d
+
+    results = sorted(seen.values(), key=lambda x: x["distance"])
+    return [r for r in results if r["distance"] < 100][:10]
 
 
 @app.route("/api/submit_review", methods=["POST"])
