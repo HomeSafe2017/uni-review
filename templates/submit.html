@@ -22,7 +22,7 @@
                     <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">📍 检测到附近学校，请选择：</p>
                     <div id="nearbySchoolsContainer" class="space-y-1"></div>
                 </div>
-                <button type="button" onclick="detectLocation()" class="mt-3 text-sm text-primary-600 dark:text-primary-400 hover:underline">
+                <button type="button" onclick="detectLocation()" class="mt-3 flex items-center gap-2 px-4 py-2 border border-primary-300 dark:border-primary-600 rounded-lg text-sm text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors">
                     📍 自动定位我的学校
                 </button>
             </div>
@@ -372,42 +372,54 @@ async function checkDuplicate() {
 
 // ── 自动定位 ──
 async function detectLocation() {
-    const btn = event.target;
-    btn.textContent = '📍 定位中...';
+    const btn = event.target.closest('button');
+    const origHTML = btn.innerHTML;
+    btn.innerHTML = '⏳ 定位中...';
+    btn.disabled = true;
     const locationList = document.getElementById('nearbySchoolsList');
     const container = document.getElementById('nearbySchoolsContainer');
     
     let results = [];
+    let locateMethod = '';
     
-    // 方案1：浏览器精确定位
+    // 方案1：浏览器精确定位（GPS/WiFi，精度高）
     if (navigator.geolocation) {
         try {
             const pos = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, enableHighAccuracy: true });
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    timeout: 10000,
+                    enableHighAccuracy: true,
+                    maximumAge: 30000
+                });
             });
             const resp = await fetch(`/api/nearby_schools?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`);
             results = await resp.json();
+            if (results.length > 0) locateMethod = 'GPS';
         } catch(e) {
-            // 浏览器定位失败（HTTPS限制或用户拒绝），走IP定位
+            // 浏览器定位失败：HTTP页面无权限 / 用户拒绝 / 超时
+            console.warn('浏览器定位失败:', e.message);
         }
     }
     
-    // 方案2：IP定位
+    // 方案2：IP定位（精度低，仅到城市级别）
     if (results.length === 0) {
         try {
             const resp = await fetch('/api/detect_location');
             results = await resp.json();
+            if (results.length > 0) locateMethod = 'IP';
         } catch(e) {}
     }
     
-    btn.textContent = '📍 自动定位我的学校';
+    btn.innerHTML = origHTML;
+    btn.disabled = false;
     
     if (results.length === 0) {
-        alert('定位失败，请手动搜索学校');
+        alert('定位失败，请手动搜索学校\n\n提示：浏览器定位需要HTTPS环境，当前为HTTP所以无法使用精确定位');
         return;
     }
     
     // 展示选择列表
+    const methodLabel = locateMethod === 'GPS' ? '🛰️ GPS定位' : '🌐 IP定位（精度较低）';
     container.innerHTML = results.map(s => {
         const dist = s.distance < 1 ? Math.round(s.distance * 1000) + 'm' : s.distance.toFixed(1) + 'km';
         const campus = s.campus_name ? ` · ${s.campus_name}` : '';
@@ -419,6 +431,9 @@ async function detectLocation() {
                 <span class="text-xs text-gray-400">${dist}</span>
             </button>`;
     }).join('');
+    // 更新标签显示定位方式
+    const labelEl = locationList.querySelector('p');
+    if (labelEl) labelEl.innerHTML = `📍 ${methodLabel}，检测到附近学校，请选择：`;
     locationList.classList.remove('hidden');
 }
 

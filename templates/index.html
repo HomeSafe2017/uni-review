@@ -15,7 +15,7 @@
         <p class="text-xl md:text-2xl mb-2 opacity-90">站在学生的角度，说出真实的声音</p>
         <p class="text-base md:text-lg mb-8 opacity-75">不是论文数、不是院士数，而是食堂好不好吃、空调有没有、老师人好不好</p>
 
-        <!-- 搜索框 -->
+        <!-- 搜索框 + 快捷入口 -->
         <form action="/search" method="get" class="max-w-2xl mx-auto">
             <div class="flex items-center bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden">
                 <span class="pl-5 text-gray-400 text-xl">🔍</span>
@@ -27,6 +27,14 @@
                 </button>
             </div>
         </form>
+        <div class="flex justify-center gap-4 mt-6">
+            <a href="/ranking" class="inline-flex items-center gap-2 px-6 py-3 bg-white/20 hover:bg-white/30 text-white rounded-xl font-medium transition-colors backdrop-blur-sm">
+                🏆 查看排名
+            </a>
+            <a href="/submit" class="inline-flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-primary-600 dark:text-primary-400 rounded-xl font-medium transition-colors shadow-lg">
+                ✍️ 写测评
+            </a>
+        </div>
 
         <!-- 统计 -->
         <div class="flex justify-center space-x-8 mt-8 text-sm opacity-80">
