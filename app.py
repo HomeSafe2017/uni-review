@@ -473,15 +473,38 @@ def school_detail(school_id):
 
     avg = get_school_avg(school_id)
 
-    major_scores = db.execute("""
+    major_rows = db.execute("""
         SELECT m.id as major_id, m.name as major_name, m.category,
                COUNT(r.id) as review_count,
-               ROUND(AVG(r.overall_score), 2) as avg_score
+               ROUND(AVG(r.overall_score), 2) as avg_score,
+               GROUP_CONCAT(r.category_scores, '|||') as all_cat_scores
         FROM majors m
         JOIN reviews r ON m.id = r.major_id AND r.school_id = ?
         GROUP BY m.id
         ORDER BY avg_score DESC
     """, (school_id,)).fetchall()
+
+    # 为每个专业计算各维度平均分
+    major_scores = []
+    for row in major_rows:
+        ms = dict(row)
+        cat_sums = {k: [] for k in CAT_KEYS}
+        if ms["all_cat_scores"]:
+            for cs_str in ms["all_cat_scores"].split("|||"):
+                try:
+                    cs = json.loads(cs_str) if cs_str else {}
+                except (json.JSONDecodeError, TypeError):
+                    cs = {}
+                for k in CAT_KEYS:
+                    if cs.get(k, 0) > 0:
+                        cat_sums[k].append(cs[k])
+        ms["category_scores"] = {}
+        for k in CAT_KEYS:
+            vals = cat_sums[k]
+            ms["category_scores"][k] = round(sum(vals) / len(vals), 2) if vals else 0
+        # 移除不需要传到模板的原始字段
+        del ms["all_cat_scores"]
+        major_scores.append(ms)
 
     reviews = db.execute("""
         SELECT r.*, m.name as major_name, m.category as major_category

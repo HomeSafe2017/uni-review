@@ -82,24 +82,40 @@
                 </div>
                 {% endif %}
 
-                <!-- 专业评分列表 -->
+                <!-- 专业评分列表 + 对比 -->
                 {% if major_scores %}
                 <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                    <h2 class="font-bold text-lg mb-4">📘 专业评分</h2>
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="font-bold text-lg">📘 专业评分</h2>
+                        <span id="compareHint" class="text-xs text-gray-400 hidden">点击选择2~4个专业进行对比</span>
+                    </div>
                     <div class="space-y-3">
                         {% for ms in major_scores %}
-                        <a href="/school/{{ school.id }}/major/{{ ms.major_id }}" class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer major-item" data-mid="{{ ms.major_id }}">
                             <div class="flex items-center space-x-3">
+                                <span class="w-5 h-5 flex items-center justify-center rounded border border-gray-300 dark:border-gray-600 text-transparent major-check transition-colors">✓</span>
                                 <span class="px-2 py-0.5 text-xs rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">{{ ms.category or '其他' }}</span>
-                                <span class="font-medium">{{ ms.major_name }}</span>
+                                <a href="/school/{{ school.id }}/major/{{ ms.major_id }}" class="font-medium hover:text-primary-600 dark:hover:text-primary-400" onclick="event.stopPropagation()">{{ ms.major_name }}</a>
                                 <span class="text-xs text-gray-400">{{ ms.review_count }} 条测评</span>
                             </div>
                             {% if ms.avg_score %}
                             <span class="font-bold {{ ms.avg_score|score_bg }} px-3 py-1 rounded-lg">{{ ms.avg_score|format_score }}/5</span>
                             {% endif %}
-                        </a>
+                        </div>
                         {% endfor %}
                     </div>
+                </div>
+
+                <!-- 专业横向对比图 -->
+                <div id="compareSection" class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="font-bold text-lg">⚖️ 专业对比</h2>
+                        <button id="clearCompare" class="text-xs text-gray-400 hover:text-red-500 transition-colors">清除选择</button>
+                    </div>
+                    <div class="max-w-full" style="min-height:320px">
+                        <canvas id="compareChart"></canvas>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-3 text-center">横轴为评分(0~5)，同一维度下并排展示所选专业</p>
                 </div>
                 {% endif %}
 
@@ -196,6 +212,174 @@ document.addEventListener('DOMContentLoaded', function() {
             plugins: { legend: { display: false } }
         }
     });
+});
+</script>
+{% endif %}
+
+{% if major_scores %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 专业数据（含各维度分数）
+    var majorData = {
+        {% for ms in major_scores %}
+        '{{ ms.major_id }}': {
+            name: '{{ ms.major_name }}',
+            category: '{{ ms.category or "其他" }}',
+            scores: {
+                {% for k in cat_keys %}
+                '{{ k }}': {{ ms.category_scores.get(k, 0) or 0 }}{% if not loop.last %},{% endif %}
+                {% endfor %}
+            }
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    var catKeys = [{% for k in cat_keys %}'{{ k }}'{% if not loop.last %},{% endif %}{% endfor %}];
+    var catLabels = [{% for k in cat_keys %}'{{ categories[k].icon }} {{ categories[k].name }}'{% if not loop.last %},{% endif %}{% endfor %}];
+
+    // 配色方案（最多4个专业）
+    var palette = [
+        { bg: 'rgba(99, 102, 241, 0.7)',  border: 'rgb(99, 102, 241)' },
+        { bg: 'rgba(245, 158, 11, 0.7)',  border: 'rgb(245, 158, 11)' },
+        { bg: 'rgba(16, 185, 129, 0.7)',  border: 'rgb(16, 185, 129)' },
+        { bg: 'rgba(239, 68, 68, 0.7)',   border: 'rgb(239, 68, 68)' }
+    ];
+
+    var selectedMids = [];
+    var compareChart = null;
+    var compareSection = document.getElementById('compareSection');
+    var compareHint = document.getElementById('compareHint');
+    var clearBtn = document.getElementById('clearCompare');
+
+    // 显示提示
+    compareHint.classList.remove('hidden');
+
+    // 点击专业行进行选择
+    document.querySelectorAll('.major-item').forEach(function(item) {
+        item.addEventListener('click', function() {
+            var mid = this.dataset.mid;
+            var idx = selectedMids.indexOf(mid);
+            if (idx > -1) {
+                // 取消选择
+                selectedMids.splice(idx, 1);
+                this.classList.remove('ring-2', 'ring-primary-500', 'bg-primary-50', 'dark:bg-primary-900/20');
+                this.querySelector('.major-check').classList.remove('bg-primary-600', 'border-primary-600', 'text-white');
+                this.querySelector('.major-check').classList.add('text-transparent');
+            } else {
+                if (selectedMids.length >= 4) return; // 最多4个
+                selectedMids.push(mid);
+                this.classList.add('ring-2', 'ring-primary-500', 'bg-primary-50', 'dark:bg-primary-900/20');
+                this.querySelector('.major-check').classList.add('bg-primary-600', 'border-primary-600', 'text-white');
+                this.querySelector('.major-check').classList.remove('text-transparent');
+            }
+            updateCompare();
+        });
+    });
+
+    // 清除选择
+    clearBtn.addEventListener('click', function() {
+        selectedMids = [];
+        document.querySelectorAll('.major-item').forEach(function(item) {
+            item.classList.remove('ring-2', 'ring-primary-500', 'bg-primary-50', 'dark:bg-primary-900/20');
+            var chk = item.querySelector('.major-check');
+            chk.classList.remove('bg-primary-600', 'border-primary-600', 'text-white');
+            chk.classList.add('text-transparent');
+        });
+        updateCompare();
+    });
+
+    function updateCompare() {
+        if (selectedMids.length >= 2) {
+            compareSection.classList.remove('hidden');
+            renderChart();
+        } else {
+            compareSection.classList.add('hidden');
+            if (compareChart) {
+                compareChart.destroy();
+                compareChart = null;
+            }
+        }
+    }
+
+    function renderChart() {
+        var isDark = document.documentElement.classList.contains('dark');
+        var canvasCtx = document.getElementById('compareChart').getContext('2d');
+
+        if (compareChart) {
+            compareChart.destroy();
+        }
+
+        var datasets = selectedMids.map(function(mid, i) {
+            var m = majorData[mid];
+            var c = palette[i % palette.length];
+            return {
+                label: m.name,
+                data: catKeys.map(function(k) { return m.scores[k]; }),
+                backgroundColor: c.bg,
+                borderColor: c.border,
+                borderWidth: 1,
+                borderRadius: 4
+            };
+        });
+
+        compareChart = new Chart(canvasCtx, {
+            type: 'bar',
+            data: {
+                labels: catLabels,
+                datasets: datasets
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        min: 0,
+                        max: 5,
+                        ticks: {
+                            stepSize: 1,
+                            color: isDark ? '#9ca3af' : '#6b7280'
+                        },
+                        grid: {
+                            color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            color: isDark ? '#d1d5db' : '#374151',
+                            font: { size: 12 }
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            color: isDark ? '#d1d5db' : '#374151',
+                            usePointStyle: true,
+                            padding: 16
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label + ': ' + ctx.parsed.x.toFixed(2) + '/5';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 根据维度数量动态调整画布高度
+        var minHeight = 320;
+        var extraPerDataset = 30;
+        var height = minHeight + (selectedMids.length - 2) * extraPerDataset;
+        document.getElementById('compareChart').parentElement.style.minHeight = height + 'px';
+    }
 });
 </script>
 {% endif %}
