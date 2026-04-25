@@ -134,7 +134,12 @@ function toggleMobileMenu() {
 function getDeviceId() {
     let id = localStorage.getItem('device_id');
     if (!id) {
-        id = 'dev_' + crypto.randomUUID();
+        // crypto.randomUUID() 在HTTP非安全上下文下不可用，降级为Math.random
+        try {
+            id = 'dev_' + crypto.randomUUID();
+        } catch (e) {
+            id = 'dev_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+        }
         localStorage.setItem('device_id', id);
     }
     return id;

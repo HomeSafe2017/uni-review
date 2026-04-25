@@ -908,7 +908,7 @@ def api_ranking():
         SELECT s.id as school_id, s.name as school_name, s.province, s.city,
                s.type, s.level,
                COUNT(r.id) as review_count,
-               GROUP_CONCAT(r.category_scores) as all_cat_scores
+               GROUP_CONCAT(r.category_scores, '|||') as all_cat_scores
         FROM schools s
         JOIN reviews r ON s.id = r.school_id
         {where_sql}
@@ -923,7 +923,7 @@ def api_ranking():
         # 聚合所有测评的类别得分
         cat_sums = {k: [] for k in CAT_KEYS}
         if d.get("all_cat_scores"):
-            for cs_str in d["all_cat_scores"].split(","):
+            for cs_str in d["all_cat_scores"].split("|||"):
                 try:
                     cs = json.loads(cs_str)
                     for k in CAT_KEYS:
