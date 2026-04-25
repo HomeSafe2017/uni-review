@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% block title %}提交测评{% endblock %}
+
+{% block content %}
+<section class="py-8">
+    <div class="max-w-3xl mx-auto px-4">
+        <h1 class="text-3xl font-bold mb-2">✍️ 写测评</h1>
+        <p class="text-gray-500 dark:text-gray-400 mb-8">分享你的真实体验，帮助更多同学做出更好的选择</p>
+
+        <form id="reviewForm" class="space-y-8">
+            <!-- 学校选择 -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="font-bold text-lg mb-4">🏫 选择学校</h2>
+                <div class="relative">
+                    <input type="text" id="schoolSearch" placeholder="搜索学校名称..." autocomplete="off"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all">
+                    <input type="hidden" id="schoolId" name="school_id" required>
+                    <div id="schoolResults" class="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 hidden max-h-60 overflow-y-auto"></div>
+                </div>
+                <div id="selectedSchool" class="mt-3 hidden p-3 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400"></div>
+                <button type="button" onclick="detectLocation()" class="mt-3 text-sm text-primary-600 dark:text-primary-400 hover:underline">
+                    📍 自动定位我的学校
+                </button>
+            </div>
+
+            <!-- 专业选择 -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="font-bold text-lg mb-4">📘 选择专业</h2>
+                <div class="relative">
+                    <input type="text" id="majorSearch" placeholder="搜索专业名称..." autocomplete="off"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all">
+                    <input type="hidden" id="majorId" name="major_id" required>
+                    <div id="majorResults" class="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 hidden max-h-60 overflow-y-auto"></div>
+                </div>
+                <div id="selectedMajor" class="mt-3 hidden p-3 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400"></div>
+                <div id="duplicateWarning" class="mt-3 hidden p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
+                    ⚠️ 您已经对该学校该专业提交过测评了
+                </div>
+            </div>
+
+            <!-- 评分 -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="font-bold text-lg mb-4">⭐ 打分（1-5分）</h2>
+                <div class="space-y-5">
+                    {% for k in dim_keys %}
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="font-medium flex items-center space-x-2">
+                                <span class="text-xl">{{ dimensions[k].icon }}</span>
+                                <span>{{ dimensions[k].name }}</span>
+                            </label>
+                            <span id="val_{{ k }}" class="text-2xl font-bold text-primary-600 dark:text-primary-400">3</span>
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{ dimensions[k].desc }}</p>
+                        <input type="range" id="{{ k }}" name="{{ k }}" min="1" max="5" value="3" step="1"
+                               class="w-full slider-track bg-gray-200 dark:bg-gray-600 cursor-pointer"
+                               oninput="updateSlider(this)">
+                        <div class="flex justify-between text-xs text-gray-400 mt-1">
+                            <span>很差</span><span>较差</span><span>一般</span><span>较好</span><span>很好</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 标签 -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="font-bold text-lg mb-4">🏷️ 选择标签（可多选）</h2>
+                <div class="flex flex-wrap gap-2" id="tagContainer">
+                    {% for tag in tags %}
+                    <button type="button" class="tag-chip px-3 py-1.5 rounded-full text-sm border border-gray-300 dark:border-gray-600 hover:border-primary-400 transition-all"
+                            onclick="toggleTag(this)" data-tag="{{ tag }}">{{ tag }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 评价 -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="font-bold text-lg mb-4">💬 写下你的体验</h2>
+                <textarea id="comment" name="comment" rows="5" maxlength="1000"
+                          placeholder="分享你的真实感受吧...比如：宿舍4人间有独卫，食堂二楼麻辣烫绝了，但期末季图书馆根本抢不到位子..."
+                          class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none resize-none transition-all"></textarea>
+                <div class="text-right text-xs text-gray-400 mt-1"><span id="charCount">0</span>/1000</div>
+            </div>
+
+            <!-- 提交 -->
+            <div class="text-center">
+                <button type="submit" id="submitBtn" class="px-12 py-4 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-medium text-lg transition-colors shadow-lg shadow-primary-600/30 disabled:opacity-50 disabled:cursor-not-allowed">
+                    🚀 提交测评
+                </button>
+                <p class="text-xs text-gray-400 mt-3">同一设备对同一学校同一专业仅可提交一次测评</p>
+            </div>
+        </form>
+    </div>
+</section>
+
+<script>
+// ── 滑块更新 ──
+function updateSlider(el) {
+    document.getElementById('val_' + el.id).textContent = el.value;
+}
+
+// ── 标签选择 ──
+const selectedTags = new Set();
+function toggleTag(btn) {
+    const tag = btn.dataset.tag;
+    if (selectedTags.has(tag)) {
+        selectedTags.delete(tag);
+        btn.classList.remove('selected');
+    } else {
+        selectedTags.add(tag);
+        btn.classList.add('selected');
+    }
+}
+
+// ── 学校搜索 ──
+let schoolTimer;
+document.getElementById('schoolSearch').addEventListener('input', function() {
+    clearTimeout(schoolTimer);
+    const q = this.value.trim();
+    if (!q) { document.getElementById('schoolResults').classList.add('hidden'); return; }
+    schoolTimer = setTimeout(async () => {
+        const resp = await fetch('/api/schools?q=' + encodeURIComponent(q));
+        const data = await resp.json();
+        const container = document.getElementById('schoolResults');
+        if (data.length === 0) {
+            container.innerHTML = '<div class="p-3 text-gray-400 text-sm">没有找到匹配的学校</div>';
+        } else {
+            container.innerHTML = data.map(s =>
+                `<div class="px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-100 dark:border-gray-600 last:border-0"
+                      onclick="selectSchool(${s.id}, '${s.name}', '${s.province} ${s.city}')">
+                    <div class="font-medium">${s.name}</div>
+                    <div class="text-xs text-gray-400">${s.province} ${s.city}</div>
+                </div>`
+            ).join('');
+        }
+        container.classList.remove('hidden');
+    }, 300);
+});
+
+function selectSchool(id, name, location) {
+    document.getElementById('schoolId').value = id;
+    document.getElementById('schoolSearch').value = name;
+    document.getElementById('selectedSchool').textContent = '✅ ' + name + ' (' + location + ')';
+    document.getElementById('selectedSchool').classList.remove('hidden');
+    document.getElementById('schoolResults').classList.add('hidden');
+    checkDuplicate();
+}
+
+// ── 专业搜索 ──
+let majorTimer;
+document.getElementById('majorSearch').addEventListener('input', function() {
+    clearTimeout(majorTimer);
+    const q = this.value.trim();
+    if (!q) { document.getElementById('majorResults').classList.add('hidden'); return; }
+    majorTimer = setTimeout(async () => {
+        const resp = await fetch('/api/majors?q=' + encodeURIComponent(q));
+        const data = await resp.json();
+        const container = document.getElementById('majorResults');
+        if (data.length === 0) {
+            container.innerHTML = '<div class="p-3 text-gray-400 text-sm">没有找到匹配的专业</div>';
+        } else {
+            container.innerHTML = data.map(m =>
+                `<div class="px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-100 dark:border-gray-600 last:border-0"
+                      onclick="selectMajor(${m.id}, '${m.name}', '${m.category || ''}')">
+                    <div class="font-medium">${m.name}</div>
+                    <div class="text-xs text-gray-400">${m.category || '其他'}</div>
+                </div>`
+            ).join('');
+        }
+        container.classList.remove('hidden');
+    }, 300);
+});
+
+function selectMajor(id, name, category) {
+    document.getElementById('majorId').value = id;
+    document.getElementById('majorSearch').value = name;
+    document.getElementById('selectedMajor').textContent = '✅ ' + name + (category ? ' (' + category + ')' : '');
+    document.getElementById('selectedMajor').classList.remove('hidden');
+    document.getElementById('majorResults').classList.add('hidden');
+    checkDuplicate();
+}
+
+// ── 检查重复 ──
+async function checkDuplicate() {
+    const schoolId = document.getElementById('schoolId').value;
+    const majorId = document.getElementById('majorId').value;
+    const deviceId = getDeviceId();
+    const warning = document.getElementById('duplicateWarning');
+    if (!schoolId || !majorId) { warning.classList.add('hidden'); return; }
+    const resp = await fetch(`/api/check_review?device_id=${deviceId}&school_id=${schoolId}&major_id=${majorId}`);
+    const data = await resp.json();
+    if (data.exists) {
+        warning.classList.remove('hidden');
+        document.getElementById('submitBtn').disabled = true;
+    } else {
+        warning.classList.add('hidden');
+        document.getElementById('submitBtn').disabled = false;
+    }
+}
+
+// ── 自动定位 ──
+async function detectLocation() {
+    if (!navigator.geolocation) {
+        alert('您的浏览器不支持定位功能');
+        return;
+    }
+    try {
+        const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+        });
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const resp = await fetch(`/api/nearby_schools?lat=${lat}&lng=${lng}`);
+        const data = await resp.json();
+        if (data.length > 0) {
+            const nearest = data[0];
+            selectSchool(nearest.id, nearest.name, nearest.province + ' ' + nearest.city);
+            document.getElementById('schoolSearch').value = nearest.name;
+        } else {
+            alert('附近未找到学校，请手动搜索');
+        }
+    } catch (e) {
+        alert('定位失败，请手动搜索学校');
+    }
+}
+
+// ── 字数统计 ──
+document.getElementById('comment').addEventListener('input', function() {
+    document.getElementById('charCount').textContent = this.value.length;
+});
+
+// ── 表单提交 ──
+document.getElementById('reviewForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const deviceId = getDeviceId();
+    const schoolId = parseInt(document.getElementById('schoolId').value);
+    const majorId = parseInt(document.getElementById('majorId').value);
+    if (!schoolId || !majorId) {
+        alert('请选择学校和专业');
+        return;
+    }
+
+    const scores = {};
+    {% for k in dim_keys %}
+    scores['{{ k }}'] = parseInt(document.getElementById('{{ k }}').value);
+    {% endfor %}
+
+    const data = {
+        device_id: deviceId,
+        school_id: schoolId,
+        major_id: majorId,
+        comment: document.getElementById('comment').value.trim(),
+        tags: Array.from(selectedTags),
+        ...scores
+    };
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = '提交中...';
+
+    try {
+        const resp = await fetch('/api/submit_review', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        const result = await resp.json();
+        if (result.success) {
+            window.location.href = '/review/' + result.review_id;
+        } else {
+            alert(result.error || '提交失败');
+            btn.disabled = false;
+            btn.textContent = '🚀 提交测评';
+        }
+    } catch (e) {
+        alert('网络错误，请重试');
+        btn.disabled = false;
+        btn.textContent = '🚀 提交测评';
+    }
+});
+
+// 点击外部关闭搜索结果
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#schoolSearch') && !e.target.closest('#schoolResults'))
+        document.getElementById('schoolResults').classList.add('hidden');
+    if (!e.target.closest('#majorSearch') && !e.target.closest('#majorResults'))
+        document.getElementById('majorResults').classList.add('hidden');
+});
+</script>
+{% endblock %}

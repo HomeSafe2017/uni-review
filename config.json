@@ -1,0 +1,25 @@
+{
+  "host": "0.0.0.0",
+  "port": 5210,
+  "debug": false,
+  "database": "data/uni_review.db",
+  "secret_key": "uni-review-secret-key-2026",
+  "dimensions": {
+    "professional_difficulty": {"name": "专业难度", "icon": "📚", "desc": "课程设置是否合理，学习压力如何", "weight": 10},
+    "teaching_quality": {"name": "教学质量", "icon": "👨‍🏫", "desc": "老师教学水平和态度", "weight": 12},
+    "college_atmosphere": {"name": "学院风气", "icon": "🏛️", "desc": "学术氛围、内卷程度", "weight": 10},
+    "dormitory": {"name": "宿舍条件", "icon": "🏠", "desc": "房间大小、设施、卫生条件", "weight": 10},
+    "cafeteria": {"name": "食堂条件", "icon": "🍚", "desc": "价格、口味、卫生", "weight": 10},
+    "campus_environment": {"name": "校园环境", "icon": "🌳", "desc": "绿化、景观、校园面积", "weight": 8},
+    "infrastructure": {"name": "基础设施", "icon": "🏢", "desc": "空调、电梯、WiFi、图书馆", "weight": 10},
+    "employment_prospect": {"name": "就业前景", "icon": "💼", "desc": "校招资源、实习机会", "weight": 12},
+    "extracurricular": {"name": "课外活动", "icon": "🎭", "desc": "社团、比赛、实践机会", "weight": 8},
+    "mental_support": {"name": "心理支持", "icon": "💚", "desc": "心理咨询、关怀体系", "weight": 10}
+  },
+  "tags": [
+    "内卷严重", "佛系养身", "食堂神仙", "食堂地狱", "空调自由",
+    "空调绝缘", "电梯便利", "爬楼达人", "校园巨美", "校园荒凉",
+    "宿舍豪华", "宿舍破旧", "老师超好", "老师摆烂", "就业无忧",
+    "就业困难", "WiFi飞起", "WiFi龟速", "图书馆霸位", "社团丰富"
+  ]
+}

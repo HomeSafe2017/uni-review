@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}首页{% endblock %}
+
+{% block content %}
+<!-- Hero区域 -->
+<section class="hero-bg text-white py-16 md:py-24 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-10">
+        <div class="absolute top-10 left-10 text-8xl">📚</div>
+        <div class="absolute top-20 right-20 text-7xl">🎓</div>
+        <div class="absolute bottom-10 left-1/3 text-6xl">🏫</div>
+        <div class="absolute bottom-20 right-10 text-7xl">💡</div>
+    </div>
+    <div class="max-w-4xl mx-auto px-4 text-center relative z-10">
+        <h1 class="text-4xl md:text-5xl font-bold mb-4">学之声</h1>
+        <p class="text-xl md:text-2xl mb-2 opacity-90">站在学生的角度，说出真实的声音</p>
+        <p class="text-base md:text-lg mb-8 opacity-75">不是论文数、不是院士数，而是食堂好不好吃、空调有没有、老师人好不好</p>
+
+        <!-- 搜索框 -->
+        <form action="/search" method="get" class="max-w-2xl mx-auto">
+            <div class="flex items-center bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden">
+                <span class="pl-5 text-gray-400 text-xl">🔍</span>
+                <input type="text" name="q" placeholder="搜索学校名称..." 
+                       class="flex-1 px-4 py-4 text-gray-900 dark:text-white bg-transparent outline-none text-lg placeholder-gray-400"
+                       value="{{ request.args.get('q', '') }}">
+                <button type="submit" class="px-8 py-4 bg-primary-600 hover:bg-primary-700 text-white font-medium transition-colors">
+                    搜索
+                </button>
+            </div>
+        </form>
+
+        <!-- 统计 -->
+        <div class="flex justify-center space-x-8 mt-8 text-sm opacity-80">
+            <span>🏫 {{ stats.school_count or 0 }} 所学校</span>
+            <span>📝 {{ stats.review_count or 0 }} 条测评</span>
+            <span>📘 {{ stats.major_count or 0 }} 个专业</span>
+        </div>
+    </div>
+</section>
+
+<!-- 评分维度介绍 -->
+<section class="py-12 bg-white dark:bg-gray-800">
+    <div class="max-w-7xl mx-auto px-4">
+        <h2 class="text-2xl font-bold text-center mb-8">我们关注的，才是和学生相关的</h2>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {% for k in dim_keys %}
+            <div class="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700 card-hover">
+                <div class="text-3xl mb-2">{{ dimensions[k].icon }}</div>
+                <div class="font-medium text-sm">{{ dimensions[k].name }}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ dimensions[k].desc }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- 热门学校 -->
+{% if hot_schools %}
+<section class="py-12">
+    <div class="max-w-7xl mx-auto px-4">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold">🔥 热门学校</h2>
+            <a href="/ranking" class="text-primary-600 hover:text-primary-700 text-sm font-medium">查看全部排名 →</a>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for school in hot_schools %}
+            <a href="/school/{{ school.id }}" class="block bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 card-hover">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <h3 class="font-bold text-lg">{{ school.name }}</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ school.province }} {{ school.city }}</p>
+                        {% if school.type %}<span class="inline-block mt-1 px-2 py-0.5 text-xs rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">{{ school.type }}</span>{% endif %}
+                        {% if school.level %}<span class="inline-block mt-1 ml-1 px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">{{ school.level }}</span>{% endif %}
+                    </div>
+                    {% if school.avg_score %}
+                    <div class="text-right">
+                        <div class="text-2xl font-bold {{ score_bg(school.avg_score) }} px-3 py-1 rounded-lg">{{ school.avg_score }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="mt-3 flex items-center text-sm text-gray-500 dark:text-gray-400">
+                    <span>📝 {{ school.review_count or 0 }} 条测评</span>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<!-- 最新测评 -->
+{% if latest_reviews %}
+<section class="py-12 bg-white dark:bg-gray-800">
+    <div class="max-w-7xl mx-auto px-4">
+        <h2 class="text-2xl font-bold mb-6">📝 最新测评</h2>
+        <div class="space-y-4">
+            {% for review in latest_reviews %}
+            <a href="/review/{{ review.id }}" class="block bg-gray-50 dark:bg-gray-700 rounded-xl p-5 card-hover">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center space-x-2 mb-1">
+                            <span class="font-bold">{{ review.school_name }}</span>
+                            <span class="text-gray-400">·</span>
+                            <span class="text-primary-600 dark:text-primary-400">{{ review.major_name }}</span>
+                        </div>
+                        {% if review.comment %}
+                        <p class="text-gray-600 dark:text-gray-300 text-sm line-clamp-2 mt-1">{{ review.comment[:100] }}{% if review.comment|length > 100 %}...{% endif %}</p>
+                        {% endif %}
+                        {% if review.tags %}
+                        {% set tag_list = review.tags.split('","') if review.tags.startswith('["') else [] %}
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            {% for tag in tag_list %}
+                            <span class="px-2 py-0.5 text-xs rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400">{{ tag.strip('[]"') }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="text-right ml-4">
+                        <div class="text-xl font-bold {{ score_bg(review.overall_score) }} px-3 py-1 rounded-lg">{{ review.overall_score }}</div>
+                        <div class="text-xs text-gray-400 mt-1">{{ timeAgo(review.created_at) }}</div>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<!-- CTA -->
+<section class="py-16">
+    <div class="max-w-2xl mx-auto px-4 text-center">
+        <h2 class="text-2xl font-bold mb-4">你的声音，值得被听到</h2>
+        <p class="text-gray-500 dark:text-gray-400 mb-8">分享你的真实体验，帮助更多同学做出更好的选择</p>
+        <a href="/submit" class="inline-block px-8 py-4 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-medium text-lg transition-colors shadow-lg shadow-primary-600/30">
+            ✍️ 写测评
+        </a>
+    </div>
+</section>
+{% endblock %}
+
+{% macro score_bg(score) %}
+{{ 'bg-green-100 text-green-700' if score >= 4 else ('bg-yellow-100 text-yellow-700' if score >= 3 else ('bg-orange-100 text-orange-700' if score >= 2 else 'bg-red-100 text-red-700')) }}
+{% endmacro %}

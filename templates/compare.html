@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}学校对比{% endblock %}
+
+{% block content %}
+<section class="py-8">
+    <div class="max-w-7xl mx-auto px-4">
+        <h1 class="text-3xl font-bold mb-2">⚖️ 学校对比</h1>
+        <p class="text-gray-500 dark:text-gray-400 mb-8">选择两所学校，从学生视角全方位对比</p>
+
+        <!-- 选择学校 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="font-bold text-lg mb-4 text-primary-600 dark:text-primary-400">🏫 学校 A</h2>
+                <select id="school1" class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-primary-500 outline-none">
+                    <option value="">选择学校...</option>
+                    {% for school in schools %}
+                    <option value="{{ school.id }}" {% if request.args.get('id1')|int == school.id %}selected{% endif %}>{{ school.name }} ({{ school.province }}{{ school.city }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="font-bold text-lg mb-4 text-purple-600 dark:text-purple-400">🏫 学校 B</h2>
+                <select id="school2" class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-purple-500 outline-none">
+                    <option value="">选择学校...</option>
+                    {% for school in schools %}
+                    <option value="{{ school.id }}" {% if request.args.get('id2')|int == school.id %}selected{% endif %}>{{ school.name }} ({{ school.province }}{{ school.city }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="text-center mb-8">
+            <button onclick="doCompare()" class="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-medium transition-colors shadow-lg shadow-primary-600/30">
+                🔍 开始对比
+            </button>
+        </div>
+
+        <!-- 对比结果 -->
+        <div id="compareResult" class="hidden space-y-6">
+            <!-- 雷达图对比 -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="font-bold text-lg mb-4 text-center">📊 雷达图对比</h2>
+                <div class="max-w-lg mx-auto">
+                    <canvas id="compareChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 详细对比 -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <table class="w-full" id="compareTable">
+                </table>
+            </div>
+        </div>
+
+        <div id="compareEmpty" class="bg-white dark:bg-gray-800 rounded-xl p-12 border border-gray-200 dark:border-gray-700 text-center">
+            <div class="text-5xl mb-4">⚖️</div>
+            <p class="text-gray-500 dark:text-gray-400">选择两所学校开始对比</p>
+        </div>
+    </div>
+</section>
+
+<script>
+let compareChartInstance = null;
+
+async function doCompare() {
+    const id1 = document.getElementById('school1').value;
+    const id2 = document.getElementById('school2').value;
+    if (!id1 || !id2) {
+        alert('请选择两所学校');
+        return;
+    }
+
+    const resp = await fetch(`/api/school_compare?id1=${id1}&id2=${id2}`);
+    const data = await resp.json();
+    if (data.error) {
+        alert(data.error);
+        return;
+    }
+
+    document.getElementById('compareEmpty').classList.add('hidden');
+    document.getElementById('compareResult').classList.remove('hidden');
+
+    const s1 = data.school1;
+    const s2 = data.school2;
+    const isDark = document.documentElement.classList.contains('dark');
+
+    // 雷达图
+    const dims = {{ dim_keys | tojson }};
+    const dimNames = dims.map(k => `{{ dimensions|tojson }}`);
+
+    const labels = [{% for k in dim_keys %}'{{ dimensions[k].icon }} {{ dimensions[k].name }}'{% if not loop.last %},{% endif %}{% endfor %}];
+
+    if (compareChartInstance) compareChartInstance.destroy();
+
+    const ctx = document.getElementById('compareChart').getContext('2d');
+    compareChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: s1.school.name,
+                    data: dims.map(k => s1.avg[k] || 0),
+                    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                    borderColor: 'rgb(99, 102, 241)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgb(99, 102, 241)',
+                },
+                {
+                    label: s2.school.name,
+                    data: dims.map(k => s2.avg[k] || 0),
+                    backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                    borderColor: 'rgb(168, 85, 247)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgb(168, 85, 247)',
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                r: {
+                    min: 0, max: 5,
+                    ticks: { stepSize: 1, color: isDark ? '#9ca3af' : '#6b7280', backdropColor: 'transparent' },
+                    grid: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
+                    pointLabels: { color: isDark ? '#d1d5db' : '#374151', font: { size: 11 } }
+                }
+            },
+            plugins: { legend: { labels: { color: isDark ? '#d1d5db' : '#374151' } } }
+        }
+    });
+
+    // 详细对比表格
+    const dimsInfo = {{ dimensions | tojson }};
+    let tableHTML = `
+        <thead>
+            <tr class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500 w-40">维度</th>
+                <th class="px-4 py-3 text-center text-sm font-medium text-primary-600 dark:text-primary-400">${s1.school.name}</th>
+                <th class="px-4 py-3 text-center text-sm font-medium text-purple-600 dark:text-purple-400">${s2.school.name}</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+    // 综合分
+    const s1Win = s1.avg.overall_score > s2.avg.overall_score;
+    const s2Win = s2.avg.overall_score > s1.avg.overall_score;
+    tableHTML += `
+        <tr class="border-b border-gray-100 dark:border-gray-700 bg-primary-50/50 dark:bg-primary-900/10">
+            <td class="px-4 py-3 font-bold">🏆 综合评分</td>
+            <td class="px-4 py-3 text-center font-bold ${s1Win ? 'text-green-600' : ''}">${s1.avg.overall_score} ${s1Win ? '✓' : ''}</td>
+            <td class="px-4 py-3 text-center font-bold ${s2Win ? 'text-green-600' : ''}">${s2.avg.overall_score} ${s2Win ? '✓' : ''}</td>
+        </tr>`;
+
+    dims.forEach(k => {
+        const v1 = s1.avg[k] || 0;
+        const v2 = s2.avg[k] || 0;
+        const w1 = v1 > v2;
+        const w2 = v2 > v1;
+        tableHTML += `
+        <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+            <td class="px-4 py-3">${dimsInfo[k].icon} ${dimsInfo[k].name}</td>
+            <td class="px-4 py-3 text-center ${w1 ? 'text-green-600 font-bold' : ''}">${v1} ${w1 ? '✓' : ''}</td>
+            <td class="px-4 py-3 text-center ${w2 ? 'text-green-600 font-bold' : ''}">${v2} ${w2 ? '✓' : ''}</td>
+        </tr>`;
+    });
+
+    // 测评数
+    tableHTML += `
+        <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="px-4 py-3">📝 测评数</td>
+            <td class="px-4 py-3 text-center">${s1.avg.review_count}</td>
+            <td class="px-4 py-3 text-center">${s2.avg.review_count}</td>
+        </tr>`;
+
+    tableHTML += '</tbody>';
+    document.getElementById('compareTable').innerHTML = tableHTML;
+}
+
+// 如果URL有参数，自动触发对比
+if (document.getElementById('school1').value && document.getElementById('school2').value) {
+    doCompare();
+}
+</script>
+{% endblock %}
