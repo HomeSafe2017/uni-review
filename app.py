@@ -182,6 +182,16 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS campuses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        school_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
+        UNIQUE(school_id, name)
+    );
+
     CREATE TABLE IF NOT EXISTS majors (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -624,38 +634,62 @@ def api_majors():
 
 @app.route("/api/nearby_schools")
 def api_nearby_schools():
-    """根据经纬度查找附近的学校"""
+    """根据经纬度查找附近的学校（支持多校区）"""
     lat = request.args.get("lat", type=float)
     lng = request.args.get("lng", type=float)
-    radius = request.args.get("radius", default=50, type=float)
+    radius = request.args.get("radius", default=100, type=float)
     if lat is None or lng is None:
         return jsonify({"error": "需要 lat 和 lng 参数"}), 400
 
     db = get_db()
     rows = db.execute("""
-        SELECT id, name, province, city, latitude, longitude,
-               (6371 * acos(
-                   cos(radians(?)) * cos(radians(latitude)) *
-                   cos(radians(longitude) - radians(?)) +
-                   sin(radians(?)) * sin(radians(latitude))
-               )) as distance
-        FROM schools
-        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        HAVING distance < ?
+        WITH campus_matches AS (
+            SELECT s.id, s.name, s.province, s.city, c.name as campus_name,
+                   (6371 * acos(
+                       cos(radians(?)) * cos(radians(c.latitude)) *
+                       cos(radians(c.longitude) - radians(?)) +
+                       sin(radians(?)) * sin(radians(c.latitude))
+                   )) as distance
+            FROM campuses c
+            JOIN schools s ON c.school_id = s.id
+            WHERE c.latitude IS NOT NULL
+        ),
+        school_matches AS (
+            SELECT s.id, s.name, s.province, s.city, NULL as campus_name,
+                   (6371 * acos(
+                       cos(radians(?)) * cos(radians(s.latitude)) *
+                       cos(radians(s.longitude) - radians(?)) +
+                       sin(radians(?)) * sin(radians(s.latitude))
+                   )) as distance
+            FROM schools s
+            WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+              AND s.id NOT IN (SELECT school_id FROM campuses)
+        ),
+        all_matches AS (
+            SELECT * FROM campus_matches WHERE distance < ?
+            UNION
+            SELECT * FROM school_matches WHERE distance < ?
+        ),
+        ranked AS (
+            SELECT id, name, province, city, campus_name, distance,
+                   ROW_NUMBER() OVER (PARTITION BY id ORDER BY distance) as rn
+            FROM all_matches
+        )
+        SELECT id, name, province, city, campus_name, distance
+        FROM ranked
+        WHERE rn = 1
         ORDER BY distance
         LIMIT 10
-    """, (lat, lng, lat, radius)).fetchall()
+    """, (lat, lng, lat, lat, lng, lat, radius, radius)).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/detect_location")
 def api_detect_location():
-    """IP定位 - 使用 ip-api.com 免费API"""
+    """IP定位 - 使用 ip-api.com 免费API（支持多校区）"""
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    # 处理多个IP的情况（取第一个）
     if ',' in user_ip:
         user_ip = user_ip.split(',')[0].strip()
-    # 本地测试IP
     if user_ip in ('127.0.0.1', '::1', 'localhost'):
         user_ip = ''
     try:
@@ -667,14 +701,43 @@ def api_detect_location():
             lat, lng = data["lat"], data["lon"]
             db = get_db()
             nearby = db.execute("""
-                SELECT *, (
-                    6371 * acos(cos(radians(?)) * cos(radians(latitude)) *
-                    cos(radians(longitude) - radians(?)) + sin(radians(?)) *
-                    sin(radians(latitude)))
-                ) AS distance
-                FROM schools WHERE latitude IS NOT NULL
-                ORDER BY distance LIMIT 5
-            """, (lat, lng, lat)).fetchall()
+                WITH campus_matches AS (
+                    SELECT s.id, s.name, s.province, s.city, c.name as campus_name,
+                           (6371 * acos(
+                               cos(radians(?)) * cos(radians(c.latitude)) *
+                               cos(radians(c.longitude) - radians(?)) +
+                               sin(radians(?)) * sin(radians(c.latitude))
+                           )) as distance
+                    FROM campuses c
+                    JOIN schools s ON c.school_id = s.id
+                ),
+                school_matches AS (
+                    SELECT s.id, s.name, s.province, s.city, NULL as campus_name,
+                           (6371 * acos(
+                               cos(radians(?)) * cos(radians(s.latitude)) *
+                               cos(radians(s.longitude) - radians(?)) +
+                               sin(radians(?)) * sin(radians(s.latitude))
+                           )) as distance
+                    FROM schools s
+                    WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+                      AND s.id NOT IN (SELECT school_id FROM campuses)
+                ),
+                all_matches AS (
+                    SELECT * FROM campus_matches
+                    UNION
+                    SELECT * FROM school_matches
+                ),
+                ranked AS (
+                    SELECT id, name, province, city, campus_name, distance,
+                           ROW_NUMBER() OVER (PARTITION BY id ORDER BY distance) as rn
+                    FROM all_matches
+                )
+                SELECT id, name, province, city, campus_name, distance
+                FROM ranked
+                WHERE rn = 1
+                ORDER BY distance
+                LIMIT 5
+            """, (lat, lng, lat, lat, lng, lat)).fetchall()
             return jsonify([dict(r) for r in nearby])
     except Exception as e:
         print(f"IP定位失败: {e}")
