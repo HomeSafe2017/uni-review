@@ -1,138 +1,139 @@
-{% extends "base.html" %}
-{% block title %}{{ school.name }} - {{ major.name }}{% endblock %}
-
-{% block content %}
-<section class="py-8">
-    <div class="max-w-7xl mx-auto px-4">
-        <!-- 面包屑 -->
-        <nav class="mb-6 text-sm text-gray-500 dark:text-gray-400">
-            <a href="/" class="hover:text-primary-600">首页</a>
-            <span class="mx-2">›</span>
-            <a href="/school/{{ school.id }}" class="hover:text-primary-600">{{ school.name }}</a>
-            <span class="mx-2">›</span>
-            <span class="text-gray-900 dark:text-white">{{ major.name }}</span>
-        </nav>
-
-        <!-- 专业信息 -->
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 md:p-8 shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
-            <div class="flex flex-col md:flex-row md:items-start md:justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold mb-2">{{ major.name }}</h1>
-                    <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                        <span>📍 {{ school.name }}</span>
-                        <span class="px-2 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">{{ major.category or '其他' }}</span>
-                    </div>
-                </div>
-                {% if avg %}
-                <div class="mt-4 md:mt-0 text-center">
-                    <div class="text-4xl font-bold {{ score_bg(avg.overall_score) }} px-6 py-3 rounded-xl">{{ avg.overall_score }}</div>
-                    <div class="text-xs text-gray-400 mt-1">综合评分</div>
-                    <div class="text-xs text-gray-400">共 {{ avg.review_count }} 条测评</div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-
-        {% if avg %}
-        <!-- 雷达图 -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 mb-6">
-            <h2 class="font-bold text-lg mb-4">📊 各维度评分</h2>
-            <div class="max-w-lg mx-auto">
-                <canvas id="radarChart"></canvas>
-            </div>
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6">
-                {% for k in dim_keys %}
-                <div class="text-center p-3 rounded-lg bg-gray-50 dark:bg-gray-700">
-                    <div class="text-lg">{{ dimensions[k].icon }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ dimensions[k].name }}</div>
-                    <div class="text-lg font-bold mt-1 {{ score_color(avg[k]) }}">{{ avg[k] }}</div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- 测评列表 -->
-        {% if reviews %}
-        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-            <h2 class="font-bold text-lg mb-4">📝 测评列表</h2>
-            <div class="space-y-4">
-                {% for review in reviews %}
-                <a href="/review/{{ review.id }}" class="block p-4 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            {% if review.comment %}
-                            <p class="text-sm text-gray-600 dark:text-gray-300">{{ review.comment[:150] }}{% if review.comment|length > 150 %}...{% endif %}</p>
-                            {% endif %}
-                            {% if review.tags %}
-                            {% set tag_list = review.tags.split('","') if review.tags.startswith('["') else [] %}
-                            <div class="flex flex-wrap gap-1 mt-2">
-                                {% for tag in tag_list %}
-                                <span class="px-2 py-0.5 text-xs rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400">{{ tag.strip('[]"') }}</span>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
-                        </div>
-                        <span class="font-bold {{ score_bg(review.overall_score) }} px-3 py-1 rounded-lg ml-3">{{ review.overall_score }}</span>
-                    </div>
-                    <div class="flex items-center justify-between mt-2 text-xs text-gray-400">
-                        <span>{{ timeAgo(review.created_at) }}</span>
-                        <span>❤️ {{ review.likes or 0 }}</span>
-                    </div>
-                </a>
-                {% endfor %}
-            </div>
-        </div>
-        {% else %}
-        <div class="bg-white dark:bg-gray-800 rounded-xl p-12 border border-gray-200 dark:border-gray-700 text-center">
-            <div class="text-5xl mb-4">✍️</div>
-            <p class="text-gray-500 dark:text-gray-400 mb-4">还没有人给 {{ school.name }} 的 {{ major.name }} 写测评</p>
-            <a href="/submit" class="inline-block px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors">成为第一个测评者</a>
-        </div>
-        {% endif %}
-    </div>
-</section>
-
-{% if avg %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const ctx = document.getElementById('radarChart').getContext('2d');
-    const isDark = document.documentElement.classList.contains('dark');
-    new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: [{% for k in dim_keys %}'{{ dimensions[k].icon }} {{ dimensions[k].name }}'{% if not loop.last %},{% endif %}{% endfor %}],
-            datasets: [{
-                label: '{{ major.name }}',
-                data: [{% for k in dim_keys %}{{ avg[k] or 0 }}{% if not loop.last %},{% endif %}{% endfor %}],
-                backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                borderColor: 'rgb(99, 102, 241)',
-                borderWidth: 2,
-                pointBackgroundColor: 'rgb(99, 102, 241)',
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                r: {
-                    min: 0, max: 5,
-                    ticks: { stepSize: 1, color: isDark ? '#9ca3af' : '#6b7280', backdropColor: 'transparent' },
-                    grid: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
-                    pointLabels: { color: isDark ? '#d1d5db' : '#374151', font: { size: 11 } }
-                }
-            },
-            plugins: { legend: { display: false } }
-        }
-    });
-});
-</script>
-{% endif %}
-
-{% macro score_bg(score) %}
-{{ 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' if score >= 4 else ('bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' if score >= 3 else ('bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' if score >= 2 else 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400')) }}
-{% endmacro %}
-
-{% macro score_color(score) %}
-{{ 'text-green-500' if score >= 4 else ('text-yellow-500' if score >= 3 else ('text-orange-500' if score >= 2 else 'text-red-500')) }}
-{% endmacro %}
-{% endblock %}
+     1|{% extends "base.html" %}
+     2|{% block title %}{{ school.name }} - {{ major.name }}{% endblock %}
+     3|
+     4|{% block content %}
+     5|<section class="py-8">
+     6|    <div class="max-w-7xl mx-auto px-4">
+     7|        <!-- 面包屑 -->
+     8|        <nav class="mb-6 text-sm text-gray-500 dark:text-gray-400">
+     9|            <a href="/" class="hover:text-primary-600">首页</a>
+    10|            <span class="mx-2">›</span>
+    11|            <a href="/school/{{ school.id }}" class="hover:text-primary-600">{{ school.name }}</a>
+    12|            <span class="mx-2">›</span>
+    13|            <span class="text-gray-900 dark:text-white">{{ major.name }}</span>
+    14|        </nav>
+    15|
+    16|        <!-- 专业信息 -->
+    17|        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 md:p-8 shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
+    18|            <div class="flex flex-col md:flex-row md:items-start md:justify-between">
+    19|                <div>
+    20|                    <h1 class="text-3xl font-bold mb-2">{{ major.name }}</h1>
+    21|                    <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+    22|                        <span>📍 {{ school.name }}</span>
+    23|                        <span class="px-2 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">{{ major.category or '其他' }}</span>
+    24|                    </div>
+    25|                </div>
+    26|                {% if avg %}
+    27|                <div class="mt-4 md:mt-0 text-center">
+    28|                    <div class="text-4xl font-bold {{ avg.overall_score|score_bg }} px-6 py-3 rounded-xl">{{ avg.overall_score }}</div>
+    29|                    <div class="text-xs text-gray-400 mt-1">综合评分</div>
+    30|                    <div class="text-xs text-gray-400">共 {{ avg.review_count }} 条测评</div>
+    31|                </div>
+    32|                {% endif %}
+    33|            </div>
+    34|        </div>
+    35|
+    36|        {% if avg %}
+    37|        <!-- 雷达图 -->
+    38|        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 mb-6">
+    39|            <h2 class="font-bold text-lg mb-4">📊 各维度评分</h2>
+    40|            <div class="max-w-lg mx-auto">
+    41|                <canvas id="radarChart"></canvas>
+    42|            </div>
+    43|            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6">
+    44|                {% for k in dim_keys %}
+    45|                <div class="text-center p-3 rounded-lg bg-gray-50 dark:bg-gray-700">
+    46|                    <div class="text-lg">{{ dimensions[k].icon }}</div>
+    47|                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ dimensions[k].name }}</div>
+    48|                    <div class="text-lg font-bold mt-1 {{ avg[k]|score_color }}">{{ avg[k] }}</div>
+    49|                </div>
+    50|                {% endfor %}
+    51|            </div>
+    52|        </div>
+    53|        {% endif %}
+    54|
+    55|        <!-- 测评列表 -->
+    56|        {% if reviews %}
+    57|        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+    58|            <h2 class="font-bold text-lg mb-4">📝 测评列表</h2>
+    59|            <div class="space-y-4">
+    60|                {% for review in reviews %}
+    61|                <a href="/review/{{ review.id }}" class="block p-4 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+    62|                    <div class="flex items-start justify-between">
+    63|                        <div class="flex-1">
+    64|                            {% if review.comment %}
+    65|                            <p class="text-sm text-gray-600 dark:text-gray-300">{{ review.comment[:150] }}{% if review.comment|length > 150 %}...{% endif %}</p>
+    66|                            {% endif %}
+    67|                            {% if review.tags %}
+    68|                            {% set tag_list = review.tags|parse_tags %}
+    69|                            <div class="flex flex-wrap gap-1 mt-2">
+    70|                                {% for tag in tag_list %}
+    71|                                <span class="px-2 py-0.5 text-xs rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400">{{ tag.strip('[]"') }}</span>
+    72|                                {% endfor %}
+    73|                            </div>
+    74|                            {% endif %}
+    75|                        </div>
+    76|                        <span class="font-bold {{ review.overall_score|score_bg }} px-3 py-1 rounded-lg ml-3">{{ review.overall_score }}</span>
+    77|                    </div>
+    78|                    <div class="flex items-center justify-between mt-2 text-xs text-gray-400">
+    79|                        <span>{{ review.created_at|time_ago }}</span>
+    80|                        <span>❤️ {{ review.likes or 0 }}</span>
+    81|                    </div>
+    82|                </a>
+    83|                {% endfor %}
+    84|            </div>
+    85|        </div>
+    86|        {% else %}
+    87|        <div class="bg-white dark:bg-gray-800 rounded-xl p-12 border border-gray-200 dark:border-gray-700 text-center">
+    88|            <div class="text-5xl mb-4">✍️</div>
+    89|            <p class="text-gray-500 dark:text-gray-400 mb-4">还没有人给 {{ school.name }} 的 {{ major.name }} 写测评</p>
+    90|            <a href="/submit" class="inline-block px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors">成为第一个测评者</a>
+    91|        </div>
+    92|        {% endif %}
+    93|    </div>
+    94|</section>
+    95|
+    96|{% if avg %}
+    97|<script>
+    98|document.addEventListener('DOMContentLoaded', function() {
+    99|    const ctx = document.getElementById('radarChart').getContext('2d');
+   100|    const isDark = document.documentElement.classList.contains('dark');
+   101|    new Chart(ctx, {
+   102|        type: 'radar',
+   103|        data: {
+   104|            labels: [{% for k in dim_keys %}'{{ dimensions[k].icon }} {{ dimensions[k].name }}'{% if not loop.last %},{% endif %}{% endfor %}],
+   105|            datasets: [{
+   106|                label: '{{ major.name }}',
+   107|                data: [{% for k in dim_keys %}{{ avg[k] or 0 }}{% if not loop.last %},{% endif %}{% endfor %}],
+   108|                backgroundColor: 'rgba(99, 102, 241, 0.2)',
+   109|                borderColor: 'rgb(99, 102, 241)',
+   110|                borderWidth: 2,
+   111|                pointBackgroundColor: 'rgb(99, 102, 241)',
+   112|            }]
+   113|        },
+   114|        options: {
+   115|            responsive: true,
+   116|            scales: {
+   117|                r: {
+   118|                    min: 0, max: 5,
+   119|                    ticks: { stepSize: 1, color: isDark ? '#9ca3af' : '#6b7280', backdropColor: 'transparent' },
+   120|                    grid: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
+   121|                    pointLabels: { color: isDark ? '#d1d5db' : '#374151', font: { size: 11 } }
+   122|                }
+   123|            },
+   124|            plugins: { legend: { display: false } }
+   125|        }
+   126|    });
+   127|});
+   128|</script>
+   129|{% endif %}
+   130|
+   131|{% macro score_bg(score) %}
+   132|{{ 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' if score >= 4 else ('bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' if score >= 3 else ('bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' if score >= 2 else 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400')) }}
+   133|{% endmacro %}
+   134|
+   135|{% macro score_color(score) %}
+   136|{{ 'text-green-500' if score >= 4 else ('text-yellow-500' if score >= 3 else ('text-orange-500' if score >= 2 else 'text-red-500')) }}
+   137|{% endmacro %}
+   138|{% endblock %}
+   139|

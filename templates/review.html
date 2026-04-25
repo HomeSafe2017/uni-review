@@ -1,197 +1,198 @@
-{% extends "base.html" %}
-{% block title %}测评详情{% endblock %}
-
-{% block content %}
-<section class="py-8">
-    <div class="max-w-4xl mx-auto px-4">
-        <!-- 面包屑 -->
-        <nav class="mb-6 text-sm text-gray-500 dark:text-gray-400">
-            <a href="/" class="hover:text-primary-600">首页</a>
-            <span class="mx-2">›</span>
-            <a href="/school/{{ review.school_id }}" class="hover:text-primary-600">{{ review.school_name }}</a>
-            <span class="mx-2">›</span>
-            <span class="text-gray-900 dark:text-white">{{ review.major_name }}</span>
-        </nav>
-
-        <!-- 测评主体 -->
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 md:p-8 shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
-            <div class="flex items-start justify-between mb-6">
-                <div>
-                    <h1 class="text-2xl font-bold">{{ review.school_name }}</h1>
-                    <div class="flex items-center gap-2 mt-1">
-                        <span class="text-primary-600 dark:text-primary-400 font-medium">{{ review.major_name }}</span>
-                        <span class="px-2 py-0.5 text-xs rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">{{ review.major_category or '' }}</span>
-                    </div>
-                </div>
-                <div class="text-center">
-                    <div class="text-3xl font-bold {{ score_bg(review.overall_score) }} px-5 py-2 rounded-xl">{{ review.overall_score }}</div>
-                    <div class="text-xs text-gray-400 mt-1">综合评分</div>
-                </div>
-            </div>
-
-            <!-- 各维度评分 -->
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-                {% for k in dim_keys %}
-                <div class="text-center p-3 rounded-lg bg-gray-50 dark:bg-gray-700">
-                    <div class="text-lg">{{ dimensions[k].icon }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ dimensions[k].name }}</div>
-                    <div class="text-lg font-bold mt-1 {{ score_color(review[k]) }}">{{ review[k] }}</div>
-                </div>
-                {% endfor %}
-            </div>
-
-            <!-- 雷达图 -->
-            <div class="max-w-sm mx-auto mb-6">
-                <canvas id="radarChart"></canvas>
-            </div>
-
-            <!-- 标签 -->
-            {% if review.tags %}
-            {% set tag_list = review.tags.split('","') if review.tags.startswith('["') else [] %}
-            <div class="flex flex-wrap gap-2 mb-6">
-                {% for tag in tag_list %}
-                <span class="px-3 py-1 text-sm rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400">{{ tag.strip('[]"') }}</span>
-                {% endfor %}
-            </div>
-            {% endif %}
-
-            <!-- 评价内容 -->
-            {% if review.comment %}
-            <div class="p-4 rounded-lg bg-gray-50 dark:bg-gray-700 mb-6">
-                <p class="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ review.comment }}</p>
-            </div>
-            {% endif %}
-
-            <!-- 操作栏 -->
-            <div class="flex items-center justify-between text-sm text-gray-400">
-                <span>{{ timeAgo(review.created_at) }}</span>
-                <div class="flex items-center space-x-4">
-                    <button onclick="toggleLike('review', {{ review.id }}, this)" class="flex items-center space-x-1 hover:text-red-500 transition-colors">
-                        <span class="like-icon">{{ '❤️' if review.likes > 0 else '🤍' }}</span>
-                        <span class="like-count">{{ review.likes or 0 }}</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 评论区 -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-            <h2 class="font-bold text-lg mb-4">💬 评论 ({{ comments|length }})</h2>
-
-            <!-- 评论输入 -->
-            <div class="flex items-start space-x-3 mb-6">
-                <div class="flex-1">
-                    <textarea id="commentInput" rows="3" maxlength="500" placeholder="说点什么..."
-                              class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-primary-500 outline-none resize-none text-sm"></textarea>
-                    <div class="flex items-center justify-between mt-2">
-                        <span class="text-xs text-gray-400"><span id="commentCharCount">0</span>/500</span>
-                        <button onclick="postComment()" class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors">
-                            发表评论
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 评论列表 -->
-            <div id="commentsList" class="space-y-4">
-                {% for comment in comments %}
-                <div class="p-4 rounded-lg bg-gray-50 dark:bg-gray-700">
-                    <p class="text-gray-700 dark:text-gray-300 text-sm">{{ comment.content }}</p>
-                    <div class="flex items-center justify-between mt-2 text-xs text-gray-400">
-                        <span>{{ timeAgo(comment.created_at) }}</span>
-                        <button onclick="toggleLike('comment', {{ comment.id }}, this)" class="flex items-center space-x-1 hover:text-red-500 transition-colors">
-                            <span class="like-icon">{{ '❤️' if comment.likes > 0 else '🤍' }}</span>
-                            <span class="like-count">{{ comment.likes or 0 }}</span>
-                        </button>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-
-            {% if not comments %}
-            <p class="text-center text-gray-400 py-8">暂无评论，来说点什么吧~</p>
-            {% endif %}
-        </div>
-    </div>
-</section>
-
-<script>
-// 雷达图
-document.addEventListener('DOMContentLoaded', function() {
-    const ctx = document.getElementById('radarChart').getContext('2d');
-    const isDark = document.documentElement.classList.contains('dark');
-    new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: [{% for k in dim_keys %}'{{ dimensions[k].icon }} {{ dimensions[k].name }}'{% if not loop.last %},{% endif %}{% endfor %}],
-            datasets: [{
-                data: [{% for k in dim_keys %}{{ review[k] or 0 }}{% if not loop.last %},{% endif %}{% endfor %}],
-                backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                borderColor: 'rgb(99, 102, 241)',
-                borderWidth: 2,
-                pointBackgroundColor: 'rgb(99, 102, 241)',
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                r: {
-                    min: 0, max: 5,
-                    ticks: { stepSize: 1, color: isDark ? '#9ca3af' : '#6b7280', backdropColor: 'transparent' },
-                    grid: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
-                    pointLabels: { color: isDark ? '#d1d5db' : '#374151', font: { size: 11 } }
-                }
-            },
-            plugins: { legend: { display: false } }
-        }
-    });
-});
-
-// 评论字数
-document.getElementById('commentInput').addEventListener('input', function() {
-    document.getElementById('commentCharCount').textContent = this.value.length;
-});
-
-// 发表评论
-async function postComment() {
-    const content = document.getElementById('commentInput').value.trim();
-    if (!content) { alert('请输入评论内容'); return; }
-    const deviceId = getDeviceId();
-    const reviewId = {{ review.id }};
-    const resp = await fetch('/api/comment', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ device_id: deviceId, review_id: reviewId, content: content })
-    });
-    const data = await resp.json();
-    if (data.success) {
-        // 添加到列表
-        const commentHTML = `
-        <div class="p-4 rounded-lg bg-gray-50 dark:bg-gray-700 fade-in">
-            <p class="text-gray-700 dark:text-gray-300 text-sm">${content}</p>
-            <div class="flex items-center justify-between mt-2 text-xs text-gray-400">
-                <span>刚刚</span>
-                <button onclick="toggleLike('comment', ${data.comment_id}, this)" class="flex items-center space-x-1 hover:text-red-500 transition-colors">
-                    <span class="like-icon">🤍</span>
-                    <span class="like-count">0</span>
-                </button>
-            </div>
-        </div>`;
-        const list = document.getElementById('commentsList');
-        list.insertAdjacentHTML('afterbegin', commentHTML);
-        document.getElementById('commentInput').value = '';
-        document.getElementById('commentCharCount').textContent = '0';
-    } else {
-        alert(data.error || '评论失败');
-    }
-}
-</script>
-
-{% macro score_bg(score) %}
-{{ 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' if score >= 4 else ('bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' if score >= 3 else ('bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' if score >= 2 else 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400')) }}
-{% endmacro %}
-
-{% macro score_color(score) %}
-{{ 'text-green-500' if score >= 4 else ('text-yellow-500' if score >= 3 else ('text-orange-500' if score >= 2 else 'text-red-500')) }}
-{% endmacro %}
-{% endblock %}
+     1|{% extends "base.html" %}
+     2|{% block title %}测评详情{% endblock %}
+     3|
+     4|{% block content %}
+     5|<section class="py-8">
+     6|    <div class="max-w-4xl mx-auto px-4">
+     7|        <!-- 面包屑 -->
+     8|        <nav class="mb-6 text-sm text-gray-500 dark:text-gray-400">
+     9|            <a href="/" class="hover:text-primary-600">首页</a>
+    10|            <span class="mx-2">›</span>
+    11|            <a href="/school/{{ review.school_id }}" class="hover:text-primary-600">{{ review.school_name }}</a>
+    12|            <span class="mx-2">›</span>
+    13|            <span class="text-gray-900 dark:text-white">{{ review.major_name }}</span>
+    14|        </nav>
+    15|
+    16|        <!-- 测评主体 -->
+    17|        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 md:p-8 shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
+    18|            <div class="flex items-start justify-between mb-6">
+    19|                <div>
+    20|                    <h1 class="text-2xl font-bold">{{ review.school_name }}</h1>
+    21|                    <div class="flex items-center gap-2 mt-1">
+    22|                        <span class="text-primary-600 dark:text-primary-400 font-medium">{{ review.major_name }}</span>
+    23|                        <span class="px-2 py-0.5 text-xs rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">{{ review.major_category or '' }}</span>
+    24|                    </div>
+    25|                </div>
+    26|                <div class="text-center">
+    27|                    <div class="text-3xl font-bold {{ review.overall_score|score_bg }} px-5 py-2 rounded-xl">{{ review.overall_score }}</div>
+    28|                    <div class="text-xs text-gray-400 mt-1">综合评分</div>
+    29|                </div>
+    30|            </div>
+    31|
+    32|            <!-- 各维度评分 -->
+    33|            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+    34|                {% for k in dim_keys %}
+    35|                <div class="text-center p-3 rounded-lg bg-gray-50 dark:bg-gray-700">
+    36|                    <div class="text-lg">{{ dimensions[k].icon }}</div>
+    37|                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ dimensions[k].name }}</div>
+    38|                    <div class="text-lg font-bold mt-1 {{ review[k]|score_color }}">{{ review[k] }}</div>
+    39|                </div>
+    40|                {% endfor %}
+    41|            </div>
+    42|
+    43|            <!-- 雷达图 -->
+    44|            <div class="max-w-sm mx-auto mb-6">
+    45|                <canvas id="radarChart"></canvas>
+    46|            </div>
+    47|
+    48|            <!-- 标签 -->
+    49|            {% if review.tags %}
+    50|            {% set tag_list = review.tags|parse_tags %}
+    51|            <div class="flex flex-wrap gap-2 mb-6">
+    52|                {% for tag in tag_list %}
+    53|                <span class="px-3 py-1 text-sm rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400">{{ tag.strip('[]"') }}</span>
+    54|                {% endfor %}
+    55|            </div>
+    56|            {% endif %}
+    57|
+    58|            <!-- 评价内容 -->
+    59|            {% if review.comment %}
+    60|            <div class="p-4 rounded-lg bg-gray-50 dark:bg-gray-700 mb-6">
+    61|                <p class="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ review.comment }}</p>
+    62|            </div>
+    63|            {% endif %}
+    64|
+    65|            <!-- 操作栏 -->
+    66|            <div class="flex items-center justify-between text-sm text-gray-400">
+    67|                <span>{{ review.created_at|time_ago }}</span>
+    68|                <div class="flex items-center space-x-4">
+    69|                    <button onclick="toggleLike('review', {{ review.id }}, this)" class="flex items-center space-x-1 hover:text-red-500 transition-colors">
+    70|                        <span class="like-icon">{{ '❤️' if review.likes > 0 else '🤍' }}</span>
+    71|                        <span class="like-count">{{ review.likes or 0 }}</span>
+    72|                    </button>
+    73|                </div>
+    74|            </div>
+    75|        </div>
+    76|
+    77|        <!-- 评论区 -->
+    78|        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+    79|            <h2 class="font-bold text-lg mb-4">💬 评论 ({{ comments|length }})</h2>
+    80|
+    81|            <!-- 评论输入 -->
+    82|            <div class="flex items-start space-x-3 mb-6">
+    83|                <div class="flex-1">
+    84|                    <textarea id="commentInput" rows="3" maxlength="500" placeholder="说点什么..."
+    85|                              class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-primary-500 outline-none resize-none text-sm"></textarea>
+    86|                    <div class="flex items-center justify-between mt-2">
+    87|                        <span class="text-xs text-gray-400"><span id="commentCharCount">0</span>/500</span>
+    88|                        <button onclick="postComment()" class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors">
+    89|                            发表评论
+    90|                        </button>
+    91|                    </div>
+    92|                </div>
+    93|            </div>
+    94|
+    95|            <!-- 评论列表 -->
+    96|            <div id="commentsList" class="space-y-4">
+    97|                {% for comment in comments %}
+    98|                <div class="p-4 rounded-lg bg-gray-50 dark:bg-gray-700">
+    99|                    <p class="text-gray-700 dark:text-gray-300 text-sm">{{ comment.content }}</p>
+   100|                    <div class="flex items-center justify-between mt-2 text-xs text-gray-400">
+   101|                        <span>{{ comment.created_at|time_ago }}</span>
+   102|                        <button onclick="toggleLike('comment', {{ comment.id }}, this)" class="flex items-center space-x-1 hover:text-red-500 transition-colors">
+   103|                            <span class="like-icon">{{ '❤️' if comment.likes > 0 else '🤍' }}</span>
+   104|                            <span class="like-count">{{ comment.likes or 0 }}</span>
+   105|                        </button>
+   106|                    </div>
+   107|                </div>
+   108|                {% endfor %}
+   109|            </div>
+   110|
+   111|            {% if not comments %}
+   112|            <p class="text-center text-gray-400 py-8">暂无评论，来说点什么吧~</p>
+   113|            {% endif %}
+   114|        </div>
+   115|    </div>
+   116|</section>
+   117|
+   118|<script>
+   119|// 雷达图
+   120|document.addEventListener('DOMContentLoaded', function() {
+   121|    const ctx = document.getElementById('radarChart').getContext('2d');
+   122|    const isDark = document.documentElement.classList.contains('dark');
+   123|    new Chart(ctx, {
+   124|        type: 'radar',
+   125|        data: {
+   126|            labels: [{% for k in dim_keys %}'{{ dimensions[k].icon }} {{ dimensions[k].name }}'{% if not loop.last %},{% endif %}{% endfor %}],
+   127|            datasets: [{
+   128|                data: [{% for k in dim_keys %}{{ review[k] or 0 }}{% if not loop.last %},{% endif %}{% endfor %}],
+   129|                backgroundColor: 'rgba(99, 102, 241, 0.2)',
+   130|                borderColor: 'rgb(99, 102, 241)',
+   131|                borderWidth: 2,
+   132|                pointBackgroundColor: 'rgb(99, 102, 241)',
+   133|            }]
+   134|        },
+   135|        options: {
+   136|            responsive: true,
+   137|            scales: {
+   138|                r: {
+   139|                    min: 0, max: 5,
+   140|                    ticks: { stepSize: 1, color: isDark ? '#9ca3af' : '#6b7280', backdropColor: 'transparent' },
+   141|                    grid: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
+   142|                    pointLabels: { color: isDark ? '#d1d5db' : '#374151', font: { size: 11 } }
+   143|                }
+   144|            },
+   145|            plugins: { legend: { display: false } }
+   146|        }
+   147|    });
+   148|});
+   149|
+   150|// 评论字数
+   151|document.getElementById('commentInput').addEventListener('input', function() {
+   152|    document.getElementById('commentCharCount').textContent = this.value.length;
+   153|});
+   154|
+   155|// 发表评论
+   156|async function postComment() {
+   157|    const content = document.getElementById('commentInput').value.trim();
+   158|    if (!content) { alert('请输入评论内容'); return; }
+   159|    const deviceId = getDeviceId();
+   160|    const reviewId = {{ review.id }};
+   161|    const resp = await fetch('/api/comment', {
+   162|        method: 'POST',
+   163|        headers: {'Content-Type': 'application/json'},
+   164|        body: JSON.stringify({ device_id: deviceId, review_id: reviewId, content: content })
+   165|    });
+   166|    const data = await resp.json();
+   167|    if (data.success) {
+   168|        // 添加到列表
+   169|        const commentHTML = `
+   170|        <div class="p-4 rounded-lg bg-gray-50 dark:bg-gray-700 fade-in">
+   171|            <p class="text-gray-700 dark:text-gray-300 text-sm">${content}</p>
+   172|            <div class="flex items-center justify-between mt-2 text-xs text-gray-400">
+   173|                <span>刚刚</span>
+   174|                <button onclick="toggleLike('comment', ${data.comment_id}, this)" class="flex items-center space-x-1 hover:text-red-500 transition-colors">
+   175|                    <span class="like-icon">🤍</span>
+   176|                    <span class="like-count">0</span>
+   177|                </button>
+   178|            </div>
+   179|        </div>`;
+   180|        const list = document.getElementById('commentsList');
+   181|        list.insertAdjacentHTML('afterbegin', commentHTML);
+   182|        document.getElementById('commentInput').value = '';
+   183|        document.getElementById('commentCharCount').textContent = '0';
+   184|    } else {
+   185|        alert(data.error || '评论失败');
+   186|    }
+   187|}
+   188|</script>
+   189|
+   190|{% macro score_bg(score) %}
+   191|{{ 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' if score >= 4 else ('bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' if score >= 3 else ('bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' if score >= 2 else 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400')) }}
+   192|{% endmacro %}
+   193|
+   194|{% macro score_color(score) %}
+   195|{{ 'text-green-500' if score >= 4 else ('text-yellow-500' if score >= 3 else ('text-orange-500' if score >= 2 else 'text-red-500')) }}
+   196|{% endmacro %}
+   197|{% endblock %}
+   198|

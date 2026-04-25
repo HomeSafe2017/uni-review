@@ -22,6 +22,74 @@ with open(os.path.join(BASE_DIR, "config.json"), "r", encoding="utf-8") as f:
 app = Flask(__name__)
 app.secret_key = CONFIG["secret_key"]
 
+
+# ── Jinja2 过滤器和全局函数 ──────────────────────────────
+def time_ago(date_str):
+    """将日期字符串转为友好时间"""
+    if not date_str:
+        return ""
+    try:
+        now = datetime.now()
+        date = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+        diff = (now - date).total_seconds()
+    except Exception:
+        return str(date_str)[:10]
+    if diff < 60:
+        return "刚刚"
+    if diff < 3600:
+        return f"{int(diff // 60)}分钟前"
+    if diff < 86400:
+        return f"{int(diff // 3600)}小时前"
+    if diff < 2592000:
+        return f"{int(diff // 86400)}天前"
+    return str(date_str)[:10]
+
+
+def score_bg_filter(score):
+    """评分对应的CSS类"""
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return "bg-gray-100 text-gray-700"
+    if s >= 4:
+        return "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+    if s >= 3:
+        return "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
+    if s >= 2:
+        return "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400"
+    return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+
+
+def score_color_filter(score):
+    """评分数字对应的CSS类"""
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return "text-gray-500"
+    if s >= 4:
+        return "text-green-500"
+    if s >= 3:
+        return "text-yellow-500"
+    if s >= 2:
+        return "text-orange-500"
+    return "text-red-500"
+
+
+def parse_tags(tags_str):
+    """解析JSON标签字符串为列表"""
+    if not tags_str:
+        return []
+    try:
+        return json.loads(tags_str)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+app.jinja_env.filters["time_ago"] = time_ago
+app.jinja_env.filters["score_bg"] = score_bg_filter
+app.jinja_env.filters["score_color"] = score_color_filter
+app.jinja_env.filters["parse_tags"] = parse_tags
+
 DATABASE = os.path.join(BASE_DIR, CONFIG["database"])
 
 # 维度信息
