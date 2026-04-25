@@ -90,11 +90,10 @@ async function doCompare() {
     const s2 = data.school2;
     const isDark = document.documentElement.classList.contains('dark');
 
-    // 雷达图
-    const dims = {{ dim_keys | tojson }};
-    const dimNames = dims.map(k => `{{ dimensions|tojson }}`);
+    const catKeys = {{ cat_keys | tojson }};
+    const catInfo = {{ categories | tojson }};
 
-    const labels = [{% for k in dim_keys %}'{{ dimensions[k].icon }} {{ dimensions[k].name }}'{% if not loop.last %},{% endif %}{% endfor %}];
+    const labels = catKeys.map(k => catInfo[k].icon + ' ' + catInfo[k].name);
 
     if (compareChartInstance) compareChartInstance.destroy();
 
@@ -106,7 +105,7 @@ async function doCompare() {
             datasets: [
                 {
                     label: s1.school.name,
-                    data: dims.map(k => s1.avg[k] || 0),
+                    data: catKeys.map(k => s1.avg[k] || 0),
                     backgroundColor: 'rgba(99, 102, 241, 0.2)',
                     borderColor: 'rgb(99, 102, 241)',
                     borderWidth: 2,
@@ -114,7 +113,7 @@ async function doCompare() {
                 },
                 {
                     label: s2.school.name,
-                    data: dims.map(k => s2.avg[k] || 0),
+                    data: catKeys.map(k => s2.avg[k] || 0),
                     backgroundColor: 'rgba(168, 85, 247, 0.2)',
                     borderColor: 'rgb(168, 85, 247)',
                     borderWidth: 2,
@@ -137,7 +136,6 @@ async function doCompare() {
     });
 
     // 详细对比表格
-    const dimsInfo = {{ dimensions | tojson }};
     let tableHTML = `
         <thead>
             <tr class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
@@ -158,14 +156,14 @@ async function doCompare() {
             <td class="px-4 py-3 text-center font-bold ${s2Win ? 'text-green-600' : ''}">${formatScore(s2.avg.overall_score)}/5 ${s2Win ? '✓' : ''}</td>
         </tr>`;
 
-    dims.forEach(k => {
+    catKeys.forEach(k => {
         const v1 = s1.avg[k] || 0;
         const v2 = s2.avg[k] || 0;
         const w1 = v1 > v2;
         const w2 = v2 > v1;
         tableHTML += `
         <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-            <td class="px-4 py-3">${dimsInfo[k].icon} ${dimsInfo[k].name}</td>
+            <td class="px-4 py-3">${catInfo[k].icon} ${catInfo[k].name}</td>
             <td class="px-4 py-3 text-center ${w1 ? 'text-green-600 font-bold' : ''}">${formatScore(v1)}/5 ${w1 ? '✓' : ''}</td>
             <td class="px-4 py-3 text-center ${w2 ? 'text-green-600 font-bold' : ''}">${formatScore(v2)}/5 ${w2 ? '✓' : ''}</td>
         </tr>`;

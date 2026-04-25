@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""大学专业综合测评平台 - 从学生视角评价学校和专业"""
+"""学之声 - 大学专业综合测评平台 - 从学生视角评价学校和专业"""
 
 import json
 import os
@@ -21,6 +21,18 @@ with open(os.path.join(BASE_DIR, "config.json"), "r", encoding="utf-8") as f:
 
 app = Flask(__name__)
 app.secret_key = CONFIG["secret_key"]
+
+
+# ── 类别和问题信息 ────────────────────────────────────────
+CATEGORIES = CONFIG["categories"]
+CAT_KEYS = list(CATEGORIES.keys())
+ALL_TAGS = CONFIG["tags"]
+
+# 构建问题id到类别的映射
+QUESTION_TO_CAT = {}
+for cat_key, cat_info in CATEGORIES.items():
+    for q in cat_info["questions"]:
+        QUESTION_TO_CAT[q["id"]] = cat_key
 
 
 # ── Jinja2 过滤器和全局函数 ──────────────────────────────
@@ -116,7 +128,6 @@ def stars_filter(score):
     except (TypeError, ValueError):
         s = 0
     full_stars = int(s)
-    # 是否有半星（0.5以上显示半星）
     has_half = (s - full_stars) >= 0.5
     empty_stars = 5 - full_stars - (1 if has_half else 0)
     result = "★" * full_stars
@@ -135,11 +146,6 @@ app.jinja_env.filters["stars"] = stars_filter
 app.jinja_env.filters["score_bar"] = score_bar_filter
 
 DATABASE = os.path.join(BASE_DIR, CONFIG["database"])
-
-# 维度信息
-DIMENSIONS = CONFIG["dimensions"]
-DIM_KEYS = list(DIMENSIONS.keys())
-ALL_TAGS = CONFIG["tags"]
 
 
 # ── 数据库 ────────────────────────────────────────────────
@@ -189,16 +195,8 @@ def init_db():
         school_id INTEGER NOT NULL,
         major_id INTEGER NOT NULL,
         device_id TEXT NOT NULL,
-        professional_difficulty INTEGER NOT NULL CHECK(professional_difficulty BETWEEN 1 AND 5),
-        teaching_quality INTEGER NOT NULL CHECK(teaching_quality BETWEEN 1 AND 5),
-        college_atmosphere INTEGER NOT NULL CHECK(college_atmosphere BETWEEN 1 AND 5),
-        dormitory INTEGER NOT NULL CHECK(dormitory BETWEEN 1 AND 5),
-        cafeteria INTEGER NOT NULL CHECK(cafeteria BETWEEN 1 AND 5),
-        campus_environment INTEGER NOT NULL CHECK(campus_environment BETWEEN 1 AND 5),
-        infrastructure INTEGER NOT NULL CHECK(infrastructure BETWEEN 1 AND 5),
-        employment_prospect INTEGER NOT NULL CHECK(employment_prospect BETWEEN 1 AND 5),
-        extracurricular INTEGER NOT NULL CHECK(extracurricular BETWEEN 1 AND 5),
-        mental_support INTEGER NOT NULL CHECK(mental_support BETWEEN 1 AND 5),
+        answers TEXT NOT NULL DEFAULT '{}',
+        category_scores TEXT NOT NULL DEFAULT '{}',
         overall_score REAL,
         comment TEXT,
         tags TEXT,
@@ -232,49 +230,171 @@ def init_db():
 
 
 # ── 辅助函数 ──────────────────────────────────────────────
-def calc_weighted_score(row, weights=None):
-    """根据权重计算加权得分"""
-    if weights is None:
-        weights = {k: DIMENSIONS[k]["weight"] for k in DIM_KEYS}
-    total_weight = sum(weights.values())
+def calc_scores_from_answers(answers, categories_config=None):
+    """从有无答案计算各大类得分和综合得分"""
+    if categories_config is None:
+        categories_config = CATEGORIES
+    category_scores = {}
+    for cat_key, cat_info in categories_config.items():
+        question_scores = []
+        for q in cat_info["questions"]:
+            if q["id"] in answers:
+                is_yes = answers[q["id"]]
+                score = q["yes_score"] if is_yes else q["no_score"]
+                question_scores.append(score)
+        if question_scores:
+            category_scores[cat_key] = round(sum(question_scores) / len(question_scores), 2)
+        else:
+            category_scores[cat_key] = 0
+
+    # 加权综合分
+    total_weight = sum(
+        cat_info["weight"]
+        for cat_key, cat_info in categories_config.items()
+        if category_scores.get(cat_key, 0) > 0
+    )
     if total_weight == 0:
-        return 0
-    score = sum(row[k] * weights.get(k, 0) for k in DIM_KEYS) / total_weight
-    return round(score, 2)
+        overall = 0
+    else:
+        overall = sum(
+            category_scores.get(cat_key, 0) * cat_info["weight"]
+            for cat_key, cat_info in categories_config.items()
+            if category_scores.get(cat_key, 0) > 0
+        ) / total_weight
+    return category_scores, round(overall, 2)
 
 
-def get_school_avg(school_id, weights=None):
-    """获取学校各维度平均分和综合分"""
+def get_school_avg(school_id):
+    """获取学校各大类平均分和综合分"""
     db = get_db()
     rows = db.execute(
-        "SELECT * FROM reviews WHERE school_id = ?", (school_id,)
+        "SELECT answers, category_scores, overall_score FROM reviews WHERE school_id = ?",
+        (school_id,),
     ).fetchall()
     if not rows:
         return None
+
+    # 聚合每个类别的得分
+    cat_sums = {k: [] for k in CAT_KEYS}
+    for row in rows:
+        try:
+            cs = json.loads(row["category_scores"]) if row["category_scores"] else {}
+        except (json.JSONDecodeError, TypeError):
+            cs = {}
+        for k in CAT_KEYS:
+            if cs.get(k, 0) > 0:
+                cat_sums[k].append(cs[k])
+
     avg = {}
-    for k in DIM_KEYS:
-        vals = [r[k] for r in rows if r[k] is not None]
+    for k in CAT_KEYS:
+        vals = cat_sums[k]
         avg[k] = round(sum(vals) / len(vals), 2) if vals else 0
-    avg["overall_score"] = calc_weighted_score(avg, weights)
+
+    # 重新计算综合分
+    total_weight = sum(
+        CATEGORIES[k]["weight"] for k in CAT_KEYS if avg.get(k, 0) > 0
+    )
+    if total_weight == 0:
+        avg["overall_score"] = 0
+    else:
+        avg["overall_score"] = round(
+            sum(avg.get(k, 0) * CATEGORIES[k]["weight"] for k in CAT_KEYS if avg.get(k, 0) > 0)
+            / total_weight, 2
+        )
     avg["review_count"] = len(rows)
+
+    # 计算每个问题的比例统计
+    question_stats = {}
+    for q_id in QUESTION_TO_CAT:
+        yes_count = 0
+        no_count = 0
+        for row in rows:
+            try:
+                ans = json.loads(row["answers"]) if row["answers"] else {}
+            except (json.JSONDecodeError, TypeError):
+                ans = {}
+            if q_id in ans:
+                if ans[q_id]:
+                    yes_count += 1
+                else:
+                    no_count += 1
+        total = yes_count + no_count
+        if total > 0:
+            question_stats[q_id] = {
+                "yes_count": yes_count,
+                "no_count": no_count,
+                "yes_pct": round(yes_count / total * 100, 1),
+                "no_pct": round(no_count / total * 100, 1),
+                "total": total,
+            }
+    avg["question_stats"] = question_stats
+
     return avg
 
 
-def get_major_avg_in_school(school_id, major_id, weights=None):
-    """获取某校某专业各维度平均分"""
+def get_major_avg_in_school(school_id, major_id):
+    """获取某校某专业各大类平均分"""
     db = get_db()
     rows = db.execute(
-        "SELECT * FROM reviews WHERE school_id = ? AND major_id = ?",
+        "SELECT answers, category_scores, overall_score FROM reviews WHERE school_id = ? AND major_id = ?",
         (school_id, major_id),
     ).fetchall()
     if not rows:
         return None
+
+    cat_sums = {k: [] for k in CAT_KEYS}
+    for row in rows:
+        try:
+            cs = json.loads(row["category_scores"]) if row["category_scores"] else {}
+        except (json.JSONDecodeError, TypeError):
+            cs = {}
+        for k in CAT_KEYS:
+            if cs.get(k, 0) > 0:
+                cat_sums[k].append(cs[k])
+
     avg = {}
-    for k in DIM_KEYS:
-        vals = [r[k] for r in rows if r[k] is not None]
+    for k in CAT_KEYS:
+        vals = cat_sums[k]
         avg[k] = round(sum(vals) / len(vals), 2) if vals else 0
-    avg["overall_score"] = calc_weighted_score(avg, weights)
+
+    total_weight = sum(
+        CATEGORIES[k]["weight"] for k in CAT_KEYS if avg.get(k, 0) > 0
+    )
+    if total_weight == 0:
+        avg["overall_score"] = 0
+    else:
+        avg["overall_score"] = round(
+            sum(avg.get(k, 0) * CATEGORIES[k]["weight"] for k in CAT_KEYS if avg.get(k, 0) > 0)
+            / total_weight, 2
+        )
     avg["review_count"] = len(rows)
+
+    # 问题比例统计
+    question_stats = {}
+    for q_id in QUESTION_TO_CAT:
+        yes_count = 0
+        no_count = 0
+        for row in rows:
+            try:
+                ans = json.loads(row["answers"]) if row["answers"] else {}
+            except (json.JSONDecodeError, TypeError):
+                ans = {}
+            if q_id in ans:
+                if ans[q_id]:
+                    yes_count += 1
+                else:
+                    no_count += 1
+        total = yes_count + no_count
+        if total > 0:
+            question_stats[q_id] = {
+                "yes_count": yes_count,
+                "no_count": no_count,
+                "yes_pct": round(yes_count / total * 100, 1),
+                "no_pct": round(no_count / total * 100, 1),
+                "total": total,
+            }
+    avg["question_stats"] = question_stats
+
     return avg
 
 
@@ -284,7 +404,6 @@ def get_major_avg_in_school(school_id, major_id, weights=None):
 @app.route("/")
 def index():
     db = get_db()
-    # 获取热门学校（按测评数排序）
     hot_schools = db.execute("""
         SELECT s.*, COUNT(r.id) as review_count,
                ROUND(AVG(r.overall_score), 2) as avg_score
@@ -295,7 +414,6 @@ def index():
         LIMIT 12
     """).fetchall()
 
-    # 获取最新测评
     latest_reviews = db.execute("""
         SELECT r.*, s.name as school_name, m.name as major_name, m.category as major_category
         FROM reviews r
@@ -305,7 +423,6 @@ def index():
         LIMIT 10
     """).fetchall()
 
-    # 获取统计
     stats = db.execute("""
         SELECT
             (SELECT COUNT(*) FROM schools) as school_count,
@@ -317,8 +434,8 @@ def index():
                            hot_schools=hot_schools,
                            latest_reviews=latest_reviews,
                            stats=stats,
-                           dimensions=DIMENSIONS,
-                           dim_keys=DIM_KEYS)
+                           categories=CATEGORIES,
+                           cat_keys=CAT_KEYS)
 
 
 # ── 搜索 ──
@@ -333,7 +450,7 @@ def search():
         (f"%{q}%",),
     ).fetchall()
     return render_template("search.html", schools=schools, q=q,
-                           dimensions=DIMENSIONS, dim_keys=DIM_KEYS)
+                           categories=CATEGORIES, cat_keys=CAT_KEYS)
 
 
 # ── 学校详情 ──
@@ -344,10 +461,8 @@ def school_detail(school_id):
     if not school:
         return render_template("404.html", msg="学校不存在"), 404
 
-    # 学校各维度平均分
     avg = get_school_avg(school_id)
 
-    # 该校各专业评分
     major_scores = db.execute("""
         SELECT m.id as major_id, m.name as major_name, m.category,
                COUNT(r.id) as review_count,
@@ -358,7 +473,6 @@ def school_detail(school_id):
         ORDER BY avg_score DESC
     """, (school_id,)).fetchall()
 
-    # 该校测评列表
     reviews = db.execute("""
         SELECT r.*, m.name as major_name, m.category as major_category
         FROM reviews r
@@ -372,8 +486,8 @@ def school_detail(school_id):
                            avg=avg,
                            major_scores=major_scores,
                            reviews=reviews,
-                           dimensions=DIMENSIONS,
-                           dim_keys=DIM_KEYS)
+                           categories=CATEGORIES,
+                           cat_keys=CAT_KEYS)
 
 
 # ── 专业详情（在某校下） ──
@@ -400,8 +514,8 @@ def major_in_school(school_id, major_id):
                            major=major,
                            avg=avg,
                            reviews=reviews,
-                           dimensions=DIMENSIONS,
-                           dim_keys=DIM_KEYS)
+                           categories=CATEGORIES,
+                           cat_keys=CAT_KEYS)
 
 
 # ── 测评详情 ──
@@ -422,11 +536,23 @@ def review_detail(review_id):
         SELECT * FROM comments WHERE review_id = ? ORDER BY created_at DESC
     """, (review_id,)).fetchall()
 
+    # 解析 answers 和 category_scores
+    try:
+        answers = json.loads(review["answers"]) if review["answers"] else {}
+    except (json.JSONDecodeError, TypeError):
+        answers = {}
+    try:
+        category_scores = json.loads(review["category_scores"]) if review["category_scores"] else {}
+    except (json.JSONDecodeError, TypeError):
+        category_scores = {}
+
     return render_template("review.html",
                            review=review,
+                           answers=answers,
+                           category_scores=category_scores,
                            comments=comments,
-                           dimensions=DIMENSIONS,
-                           dim_keys=DIM_KEYS)
+                           categories=CATEGORIES,
+                           cat_keys=CAT_KEYS)
 
 
 # ── 提交测评 ──
@@ -438,18 +564,17 @@ def submit_page():
     return render_template("submit.html",
                            schools=schools,
                            majors=majors,
-                           dimensions=DIMENSIONS,
-                           dim_keys=DIM_KEYS,
+                           categories=CATEGORIES,
+                           cat_keys=CAT_KEYS,
                            tags=ALL_TAGS)
 
 
 # ── 排名 ──
 @app.route("/ranking")
 def ranking_page():
-    db = get_db()
     return render_template("ranking.html",
-                           dimensions=DIMENSIONS,
-                           dim_keys=DIM_KEYS)
+                           categories=CATEGORIES,
+                           cat_keys=CAT_KEYS)
 
 
 # ── 对比 ──
@@ -459,8 +584,8 @@ def compare_page():
     schools = db.execute("SELECT id, name, province, city FROM schools ORDER BY name").fetchall()
     return render_template("compare.html",
                            schools=schools,
-                           dimensions=DIMENSIONS,
-                           dim_keys=DIM_KEYS)
+                           categories=CATEGORIES,
+                           cat_keys=CAT_KEYS)
 
 
 # ── API ──────────────────────────────────────────────────
@@ -484,7 +609,6 @@ def api_schools():
 @app.route("/api/majors")
 def api_majors():
     q = request.args.get("q", "").strip()
-    school_id = request.args.get("school_id", "")
     db = get_db()
     if q:
         rows = db.execute(
@@ -503,12 +627,11 @@ def api_nearby_schools():
     """根据经纬度查找附近的学校"""
     lat = request.args.get("lat", type=float)
     lng = request.args.get("lng", type=float)
-    radius = request.args.get("radius", default=50, type=float)  # km
+    radius = request.args.get("radius", default=50, type=float)
     if lat is None or lng is None:
         return jsonify({"error": "需要 lat 和 lng 参数"}), 400
 
     db = get_db()
-    # 使用简单的距离公式（Haversine近似）
     rows = db.execute("""
         SELECT id, name, province, city, latitude, longitude,
                (6371 * acos(
@@ -525,6 +648,39 @@ def api_nearby_schools():
     return jsonify([dict(r) for r in rows])
 
 
+@app.route("/api/detect_location")
+def api_detect_location():
+    """IP定位 - 使用 ip-api.com 免费API"""
+    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    # 处理多个IP的情况（取第一个）
+    if ',' in user_ip:
+        user_ip = user_ip.split(',')[0].strip()
+    # 本地测试IP
+    if user_ip in ('127.0.0.1', '::1', 'localhost'):
+        user_ip = ''
+    try:
+        import urllib.request
+        url = f"http://ip-api.com/json/{user_ip}?lang=zh-CN&fields=status,lat,lon"
+        resp = urllib.request.urlopen(url, timeout=5)
+        data = json.loads(resp.read())
+        if data.get("status") == "success":
+            lat, lng = data["lat"], data["lon"]
+            db = get_db()
+            nearby = db.execute("""
+                SELECT *, (
+                    6371 * acos(cos(radians(?)) * cos(radians(latitude)) *
+                    cos(radians(longitude) - radians(?)) + sin(radians(?)) *
+                    sin(radians(latitude)))
+                ) AS distance
+                FROM schools WHERE latitude IS NOT NULL
+                ORDER BY distance LIMIT 5
+            """, (lat, lng, lat)).fetchall()
+            return jsonify([dict(r) for r in nearby])
+    except Exception as e:
+        print(f"IP定位失败: {e}")
+    return jsonify([])
+
+
 @app.route("/api/submit_review", methods=["POST"])
 def api_submit_review():
     data = request.get_json()
@@ -534,6 +690,7 @@ def api_submit_review():
     device_id = data.get("device_id", "").strip()
     school_id = data.get("school_id")
     major_id = data.get("major_id")
+    answers_raw = data.get("answers", {})
 
     if not device_id or not school_id or not major_id:
         return jsonify({"error": "缺少必要参数"}), 400
@@ -548,27 +705,41 @@ def api_submit_review():
     if existing:
         return jsonify({"error": "您已经对该学校该专业提交过测评了"}), 409
 
-    # 验证评分
-    scores = {}
-    for k in DIM_KEYS:
-        val = data.get(k)
-        if val is None or not (1 <= int(val) <= 5):
-            return jsonify({"error": f"评分 {DIMENSIONS[k]['name']} 无效"}), 400
-        scores[k] = int(val)
+    # 验证每个大类至少回答1个问题
+    answers = {}
+    for q_id, val in answers_raw.items():
+        if isinstance(val, bool):
+            answers[q_id] = val
+        elif isinstance(val, str):
+            answers[q_id] = val.lower() in ('true', 'yes', '1')
+        elif isinstance(val, int):
+            answers[q_id] = val == 1
 
-    # 计算综合分
-    overall_score = calc_weighted_score(scores)
+    # 检查每个大类是否有回答
+    cat_answered = {k: False for k in CAT_KEYS}
+    for q_id in answers:
+        cat_key = QUESTION_TO_CAT.get(q_id)
+        if cat_key:
+            cat_answered[cat_key] = True
+
+    unanswered_cats = [CATEGORIES[k]["name"] for k in CAT_KEYS if not cat_answered.get(k)]
+    if unanswered_cats and len(unanswered_cats) == len(CAT_KEYS):
+        return jsonify({"error": "请至少回答每个大类中的1个问题"}), 400
+
+    # 计算得分
+    category_scores, overall_score = calc_scores_from_answers(answers)
 
     comment = data.get("comment", "").strip()
     tags = data.get("tags", [])
 
     try:
         cursor = db.execute(
-            f"""INSERT INTO reviews
-            (school_id, major_id, device_id, {', '.join(DIM_KEYS)}, overall_score, comment, tags)
-            VALUES (?, ?, ?, {', '.join(['?'] * len(DIM_KEYS))}, ?, ?, ?)""",
+            """INSERT INTO reviews
+            (school_id, major_id, device_id, answers, category_scores, overall_score, comment, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (school_id, major_id, device_id,
-             *[scores[k] for k in DIM_KEYS],
+             json.dumps(answers, ensure_ascii=False),
+             json.dumps(category_scores, ensure_ascii=False),
              overall_score, comment, json.dumps(tags, ensure_ascii=False)),
         )
         db.commit()
@@ -622,28 +793,25 @@ def api_comment():
 def api_like():
     data = request.get_json()
     device_id = data.get("device_id", "").strip()
-    target_type = data.get("target_type")  # 'review' or 'comment'
+    target_type = data.get("target_type")
     target_id = data.get("target_id")
 
     if not device_id or target_type not in ("review", "comment") or not target_id:
         return jsonify({"error": "参数无效"}), 400
 
     db = get_db()
-    # 检查是否已点赞
     existing = db.execute(
         "SELECT id FROM liked_records WHERE device_id = ? AND target_type = ? AND target_id = ?",
         (device_id, target_type, target_id),
     ).fetchone()
 
     if existing:
-        # 取消点赞
         db.execute("DELETE FROM liked_records WHERE id = ?", (existing["id"],))
         table = "reviews" if target_type == "review" else "comments"
         db.execute(f"UPDATE {table} SET likes = likes - 1 WHERE id = ?", (target_id,))
         db.commit()
         return jsonify({"success": True, "liked": False})
     else:
-        # 点赞
         db.execute(
             "INSERT INTO liked_records (device_id, target_type, target_id) VALUES (?, ?, ?)",
             (device_id, target_type, target_id),
@@ -657,10 +825,9 @@ def api_like():
 @app.route("/api/ranking")
 def api_ranking():
     """获取排名数据，支持自定义权重"""
-    # 获取权重参数
     weights = {}
-    for k in DIM_KEYS:
-        w = request.args.get(f"w_{k}", default=DIMENSIONS[k]["weight"], type=float)
+    for k in CAT_KEYS:
+        w = request.args.get(f"w_{k}", default=CATEGORIES[k]["weight"], type=float)
         weights[k] = w
 
     province = request.args.get("province", "")
@@ -668,7 +835,6 @@ def api_ranking():
 
     db = get_db()
 
-    # 构建查询
     where_clauses = []
     params = []
     if province:
@@ -682,11 +848,12 @@ def api_ranking():
     if where_clauses:
         where_sql = "WHERE " + " AND ".join(where_clauses)
 
+    # 获取所有有测评的学校
     rows = db.execute(f"""
         SELECT s.id as school_id, s.name as school_name, s.province, s.city,
                s.type, s.level,
                COUNT(r.id) as review_count,
-               {', '.join(f'ROUND(AVG(r.{k}), 2) as avg_{k}' for k in DIM_KEYS)}
+               GROUP_CONCAT(r.category_scores) as all_cat_scores
         FROM schools s
         JOIN reviews r ON s.id = r.school_id
         {where_sql}
@@ -694,17 +861,41 @@ def api_ranking():
         HAVING review_count >= 1
     """, params).fetchall()
 
-    # 计算加权得分并排序
+    # 计算加权得分
     result = []
     for row in rows:
         d = dict(row)
-        scores = {k: d[f"avg_{k}"] for k in DIM_KEYS}
-        d["overall_score"] = calc_weighted_score(scores, weights)
+        # 聚合所有测评的类别得分
+        cat_sums = {k: [] for k in CAT_KEYS}
+        if d.get("all_cat_scores"):
+            for cs_str in d["all_cat_scores"].split(","):
+                try:
+                    cs = json.loads(cs_str)
+                    for k in CAT_KEYS:
+                        if cs.get(k, 0) > 0:
+                            cat_sums[k].append(cs[k])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        avg_scores = {}
+        for k in CAT_KEYS:
+            vals = cat_sums[k]
+            avg_scores[k] = round(sum(vals) / len(vals), 2) if vals else 0
+            d[f"avg_{k}"] = avg_scores[k]
+
+        # 加权得分
+        total_weight = sum(weights.get(k, 0) for k in CAT_KEYS if avg_scores.get(k, 0) > 0)
+        if total_weight > 0:
+            d["overall_score"] = round(
+                sum(avg_scores.get(k, 0) * weights.get(k, 0) for k in CAT_KEYS if avg_scores.get(k, 0) > 0)
+                / total_weight, 2
+            )
+        else:
+            d["overall_score"] = 0
         result.append(d)
 
     result.sort(key=lambda x: x["overall_score"], reverse=True)
 
-    # 添加排名
     for i, r in enumerate(result):
         r["rank"] = i + 1
 
@@ -726,17 +917,60 @@ def api_school_compare():
         if not school:
             return jsonify({"error": f"学校 {sid} 不存在"}), 404
 
-        avg_rows = db.execute("""
-            SELECT {fields}
-            FROM reviews WHERE school_id = ?
-        """.format(fields=", ".join(DIM_KEYS)), (sid,)).fetchall()
+        rows = db.execute(
+            "SELECT answers, category_scores FROM reviews WHERE school_id = ?",
+            (sid,),
+        ).fetchall()
+
+        cat_sums = {k: [] for k in CAT_KEYS}
+        for row in rows:
+            try:
+                cs = json.loads(row["category_scores"]) if row["category_scores"] else {}
+            except (json.JSONDecodeError, TypeError):
+                cs = {}
+            for k in CAT_KEYS:
+                if cs.get(k, 0) > 0:
+                    cat_sums[k].append(cs[k])
 
         avg = {}
-        for k in DIM_KEYS:
-            vals = [r[k] for r in avg_rows if r[k] is not None]
+        for k in CAT_KEYS:
+            vals = cat_sums[k]
             avg[k] = round(sum(vals) / len(vals), 2) if vals else 0
-        avg["overall_score"] = calc_weighted_score(avg)
-        avg["review_count"] = len(avg_rows)
+
+        total_weight = sum(CATEGORIES[k]["weight"] for k in CAT_KEYS if avg.get(k, 0) > 0)
+        if total_weight > 0:
+            avg["overall_score"] = round(
+                sum(avg.get(k, 0) * CATEGORIES[k]["weight"] for k in CAT_KEYS if avg.get(k, 0) > 0)
+                / total_weight, 2
+            )
+        else:
+            avg["overall_score"] = 0
+        avg["review_count"] = len(rows)
+
+        # 问题比例统计
+        question_stats = {}
+        for q_id in QUESTION_TO_CAT:
+            yes_count = 0
+            no_count = 0
+            for row in rows:
+                try:
+                    ans = json.loads(row["answers"]) if row["answers"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    ans = {}
+                if q_id in ans:
+                    if ans[q_id]:
+                        yes_count += 1
+                    else:
+                        no_count += 1
+            total = yes_count + no_count
+            if total > 0:
+                question_stats[q_id] = {
+                    "yes_count": yes_count,
+                    "no_count": no_count,
+                    "yes_pct": round(yes_count / total * 100, 1),
+                    "no_pct": round(no_count / total * 100, 1),
+                }
+        avg["question_stats"] = question_stats
 
         result[label] = {"school": dict(school), "avg": avg}
 
@@ -771,7 +1005,7 @@ def internal_error(e):
 if __name__ == "__main__":
     with app.app_context():
         init_db()
-    print(f"🚀 大学专业测评平台已启动，访问 http://0.0.0.0:{CONFIG['port']}")
+    print(f"🚀 学之声 - 大学专业测评平台已启动，访问 http://0.0.0.0:{CONFIG['port']}")
     app.run(
         host=CONFIG["host"],
         port=CONFIG["port"],

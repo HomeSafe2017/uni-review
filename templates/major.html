@@ -42,12 +42,12 @@
                 <canvas id="radarChart"></canvas>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                {% for k in dim_keys %}
+                {% for k in cat_keys %}
                 <div class="p-3 rounded-lg bg-gray-50 dark:bg-gray-700">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center space-x-2">
-                            <span class="text-lg">{{ dimensions[k].icon }}</span>
-                            <span class="text-sm text-gray-600 dark:text-gray-300">{{ dimensions[k].name }}</span>
+                            <span class="text-lg">{{ categories[k].icon }}</span>
+                            <span class="text-sm text-gray-600 dark:text-gray-300">{{ categories[k].name }}</span>
                         </div>
                         <span class="text-lg font-bold {{ avg[k]|score_color }}">{{ avg[k]|format_score }}/5</span>
                     </div>
@@ -57,6 +57,32 @@
                 </div>
                 {% endfor %}
             </div>
+
+            <!-- 问题比例统计 -->
+            {% if avg.question_stats %}
+            <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <h3 class="font-bold text-base mb-4">📋 细项统计</h3>
+                {% for k in cat_keys %}
+                {% set qs = categories[k].questions %}
+                <div class="mb-4">
+                    <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{{ categories[k].icon }} {{ categories[k].name }}</h4>
+                    <div class="space-y-2">
+                        {% for q in qs %}
+                        {% if avg.question_stats.get(q.id) %}
+                        {% set stat = avg.question_stats[q.id] %}
+                        <div class="flex items-center text-xs">
+                            <span class="flex-1 text-gray-600 dark:text-gray-400">{{ q.text }}</span>
+                            <span class="ml-2 text-gray-400">{{ stat.total }}人</span>
+                            <span class="ml-2 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">{{ stat.no_pct }}%无</span>
+                            <span class="ml-1 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">{{ stat.yes_pct }}%有</span>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
         {% endif %}
 
@@ -76,7 +102,7 @@
                             {% set tag_list = review.tags|parse_tags %}
                             <div class="flex flex-wrap gap-1 mt-2">
                                 {% for tag in tag_list %}
-                                <span class="px-2 py-0.5 text-xs rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400">{{ tag.strip('[]"') }}</span>
+                                <span class="px-2 py-0.5 text-xs rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400">{{ tag.strip('[]\"') }}</span>
                                 {% endfor %}
                             </div>
                             {% endif %}
@@ -109,10 +135,10 @@ document.addEventListener('DOMContentLoaded', function() {
     new Chart(ctx, {
         type: 'radar',
         data: {
-            labels: [{% for k in dim_keys %}'{{ dimensions[k].icon }} {{ dimensions[k].name }}'{% if not loop.last %},{% endif %}{% endfor %}],
+            labels: [{% for k in cat_keys %}'{{ categories[k].icon }} {{ categories[k].name }}'{% if not loop.last %},{% endif %}{% endfor %}],
             datasets: [{
                 label: '{{ major.name }}',
-                data: [{% for k in dim_keys %}{{ avg[k] or 0 }}{% if not loop.last %},{% endif %}{% endfor %}],
+                data: [{% for k in cat_keys %}{{ avg[k] or 0 }}{% if not loop.last %},{% endif %}{% endfor %}],
                 backgroundColor: 'rgba(99, 102, 241, 0.2)',
                 borderColor: 'rgb(99, 102, 241)',
                 borderWidth: 2,
@@ -135,16 +161,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endif %}
-
-{% macro score_bg(score) %}
-{{ 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' if score >= 4 else ('bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' if score >= 3 else ('bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' if score >= 2 else 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400')) }}
-{% endmacro %}
-
-{% macro score_color(score) %}
-{{ 'text-green-500' if score >= 4 else ('text-yellow-500' if score >= 3 else ('text-orange-500' if score >= 2 else 'text-red-500')) }}
-{% endmacro %}
-
-{% macro score_bar(score) %}
-{{ 'bg-green-500' if score >= 4 else ('bg-yellow-500' if score >= 3 else ('bg-orange-500' if score >= 2 else 'bg-red-500')) }}
-{% endmacro %}
 {% endblock %}

@@ -5,9 +5,9 @@
 <section class="py-8">
     <div class="max-w-3xl mx-auto px-4">
         <h1 class="text-3xl font-bold mb-2">✍️ 写测评</h1>
-        <p class="text-gray-500 dark:text-gray-400 mb-8">分享你的真实体验，帮助更多同学做出更好的选择</p>
+        <p class="text-gray-500 dark:text-gray-400 mb-8">回答"有无"问题，你的回答将自动换算为评分，帮助更多同学了解真实情况</p>
 
-        <form id="reviewForm" class="space-y-8">
+        <form id="reviewForm" class="space-y-6">
             <!-- 学校选择 -->
             <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
                 <h2 class="font-bold text-lg mb-4">🏫 选择学校</h2>
@@ -38,29 +38,44 @@
                 </div>
             </div>
 
-            <!-- 评分 -->
+            <!-- 问卷 - 8大类 -->
+            {% for cat_key in cat_keys %}
+            {% set cat = categories[cat_key] %}
             <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                <h2 class="font-bold text-lg mb-4">⭐ 打分（1-5分）</h2>
-                <div class="space-y-5">
-                    {% for k in dim_keys %}
-                    <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <label class="font-medium flex items-center space-x-2">
-                                <span class="text-xl">{{ dimensions[k].icon }}</span>
-                                <span>{{ dimensions[k].name }}</span>
-                            </label>
-                            <span id="val_{{ k }}" class="text-2xl font-bold text-primary-600 dark:text-primary-400">3</span>
-                        </div>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{ dimensions[k].desc }}</p>
-                        <input type="range" id="{{ k }}" name="{{ k }}" min="1" max="5" value="3" step="1"
-                               class="w-full slider-track bg-gray-200 dark:bg-gray-600 cursor-pointer"
-                               oninput="updateSlider(this)">
-                        <div class="flex justify-between text-xs text-gray-400 mt-1">
-                            <span>很差</span><span>较差</span><span>一般</span><span>较好</span><span>很好</span>
+                <div class="flex items-center justify-between mb-5">
+                    <h2 class="font-bold text-lg flex items-center space-x-2">
+                        <span class="text-2xl">{{ cat.icon }}</span>
+                        <span>{{ cat.name }}</span>
+                    </h2>
+                    <span id="cat_score_{{ cat_key }}" class="text-sm text-gray-400">未作答</span>
+                </div>
+                <div class="space-y-4">
+                    {% for q in cat.questions %}
+                    <div class="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                        <span class="text-sm text-gray-700 dark:text-gray-300 pr-4 flex-1">{{ q.text }}</span>
+                        <div class="flex items-center space-x-1 flex-shrink-0">
+                            <button type="button" id="yes_{{ q.id }}" data-qid="{{ q.id }}" data-val="yes"
+                                    onclick="toggleAnswer(this)"
+                                    class="px-3 py-1.5 rounded-l-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                是/有
+                            </button>
+                            <button type="button" id="no_{{ q.id }}" data-qid="{{ q.id }}" data-val="no"
+                                    onclick="toggleAnswer(this)"
+                                    class="px-3 py-1.5 rounded-r-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                否/无
+                            </button>
                         </div>
                     </div>
                     {% endfor %}
                 </div>
+            </div>
+            {% endfor %}
+
+            <!-- 预估总分 -->
+            <div class="bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl p-6 text-white text-center">
+                <div class="text-sm opacity-80 mb-1">预估综合评分</div>
+                <div class="text-4xl font-bold" id="previewOverall">-</div>
+                <div class="text-sm opacity-80 mt-1">/ 5.0</div>
             </div>
 
             <!-- 标签 -->
@@ -95,9 +110,154 @@
 </section>
 
 <script>
-// ── 滑块更新 ──
-function updateSlider(el) {
-    document.getElementById('val_' + el.id).textContent = el.value;
+// ── 问题回答 ──
+const answers = {};
+const categoriesConfig = {{ categories | tojson }};
+const catKeys = {{ cat_keys | tojson }};
+
+function toggleAnswer(btn) {
+    const qid = btn.dataset.qid;
+    const val = btn.dataset.val;
+    const yesBtn = document.getElementById('yes_' + qid);
+    const noBtn = document.getElementById('no_' + qid);
+
+    // 如果点击已选中的，取消选择
+    if (val === 'yes' && answers[qid] === true) {
+        delete answers[qid];
+        yesBtn.className = 'px-3 py-1.5 rounded-l-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors';
+        noBtn.className = 'px-3 py-1.5 rounded-r-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors';
+    } else if (val === 'no' && answers[qid] === false) {
+        delete answers[qid];
+        yesBtn.className = 'px-3 py-1.5 rounded-l-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors';
+        noBtn.className = 'px-3 py-1.5 rounded-r-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors';
+    } else if (val === 'yes') {
+        answers[qid] = true;
+        yesBtn.className = 'px-3 py-1.5 rounded-l-lg text-sm border-2 border-red-400 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-medium transition-colors';
+        noBtn.className = 'px-3 py-1.5 rounded-r-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors';
+    } else {
+        answers[qid] = false;
+        noBtn.className = 'px-3 py-1.5 rounded-r-lg text-sm border-2 border-green-400 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium transition-colors';
+        yesBtn.className = 'px-3 py-1.5 rounded-l-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors';
+    }
+
+    updateCatScores();
+}
+
+// 根据问题正负面判断颜色：yes_score > no_score 表示"有"是好事
+function getQuestionPositive(qid) {
+    for (const catKey of catKeys) {
+        for (const q of categoriesConfig[catKey].questions) {
+            if (q.id === qid) return q.yes_score > q.no_score;
+        }
+    }
+    return false;
+}
+
+// 重写 toggleAnswer 以区分正面/负面问题的颜色
+const _origToggle = toggleAnswer;
+toggleAnswer = function(btn) {
+    const qid = btn.dataset.qid;
+    const val = btn.dataset.val;
+    const yesBtn = document.getElementById('yes_' + qid);
+    const noBtn = document.getElementById('no_' + qid);
+    const isPositive = getQuestionPositive(qid);
+
+    const baseClass = 'px-3 py-1.5 rounded-';
+
+    if (val === 'yes' && answers[qid] === true) {
+        delete answers[qid];
+        resetBtnStyle(yesBtn, true);
+        resetBtnStyle(noBtn, false);
+    } else if (val === 'no' && answers[qid] === false) {
+        delete answers[qid];
+        resetBtnStyle(yesBtn, true);
+        resetBtnStyle(noBtn, false);
+    } else if (val === 'yes') {
+        answers[qid] = true;
+        if (isPositive) {
+            setBtnSelected(yesBtn, true, 'green');
+        } else {
+            setBtnSelected(yesBtn, true, 'red');
+        }
+        resetBtnStyle(noBtn, false);
+    } else {
+        answers[qid] = false;
+        if (isPositive) {
+            setBtnSelected(noBtn, false, 'red');
+        } else {
+            setBtnSelected(noBtn, false, 'green');
+        }
+        resetBtnStyle(yesBtn, true);
+    }
+    updateCatScores();
+};
+
+function resetBtnStyle(btn, isLeft) {
+    const r = isLeft ? 'l' : 'r';
+    btn.className = `px-3 py-1.5 rounded-${r}-lg text-sm border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`;
+}
+
+function setBtnSelected(btn, isYes, color) {
+    const r = isYes ? 'l' : 'r';
+    if (color === 'green') {
+        btn.className = `px-3 py-1.5 rounded-${r}-lg text-sm border-2 border-green-400 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium transition-colors`;
+    } else {
+        btn.className = `px-3 py-1.5 rounded-${r}-lg text-sm border-2 border-red-400 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-medium transition-colors`;
+    }
+}
+
+function updateCatScores() {
+    for (const catKey of catKeys) {
+        const catInfo = categoriesConfig[catKey];
+        let totalScore = 0;
+        let count = 0;
+        for (const q of catInfo.questions) {
+            if (q.id in answers) {
+                const isYes = answers[q.id];
+                totalScore += isYes ? q.yes_score : q.no_score;
+                count++;
+            }
+        }
+        const el = document.getElementById('cat_score_' + catKey);
+        if (count > 0) {
+            const avg = (totalScore / count).toFixed(1);
+            el.textContent = avg + '/5';
+            el.className = avg >= 4 ? 'text-sm text-green-500 font-bold' :
+                           avg >= 3 ? 'text-sm text-yellow-500 font-bold' :
+                           avg >= 2 ? 'text-sm text-orange-500 font-bold' :
+                           'text-sm text-red-500 font-bold';
+        } else {
+            el.textContent = '未作答';
+            el.className = 'text-sm text-gray-400';
+        }
+    }
+
+    // 预估综合分
+    let totalWeighted = 0;
+    let totalWeight = 0;
+    for (const catKey of catKeys) {
+        const catInfo = categoriesConfig[catKey];
+        let totalScore = 0;
+        let count = 0;
+        for (const q of catInfo.questions) {
+            if (q.id in answers) {
+                const isYes = answers[q.id];
+                totalScore += isYes ? q.yes_score : q.no_score;
+                count++;
+            }
+        }
+        if (count > 0) {
+            const catAvg = totalScore / count;
+            totalWeighted += catAvg * catInfo.weight;
+            totalWeight += catInfo.weight;
+        }
+    }
+    const overallEl = document.getElementById('previewOverall');
+    if (totalWeight > 0) {
+        overallEl.textContent = (totalWeighted / totalWeight).toFixed(1);
+    } else {
+        overallEl.textContent = '-';
+    }
 }
 
 // ── 标签选择 ──
@@ -106,10 +266,10 @@ function toggleTag(btn) {
     const tag = btn.dataset.tag;
     if (selectedTags.has(tag)) {
         selectedTags.delete(tag);
-        btn.classList.remove('selected');
+        btn.classList.remove('selected', 'bg-primary-100', 'dark:bg-primary-900/30', 'border-primary-400', 'text-primary-700', 'dark:text-primary-400');
     } else {
         selectedTags.add(tag);
-        btn.classList.add('selected');
+        btn.classList.add('selected', 'bg-primary-100', 'dark:bg-primary-900/30', 'border-primary-400', 'text-primary-700', 'dark:text-primary-400');
     }
 }
 
@@ -128,9 +288,9 @@ document.getElementById('schoolSearch').addEventListener('input', function() {
         } else {
             container.innerHTML = data.map(s =>
                 `<div class="px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-100 dark:border-gray-600 last:border-0"
-                      onclick="selectSchool(${s.id}, '${s.name}', '${s.province} ${s.city}')">
+                      onclick="selectSchool(${s.id}, '${s.name.replace(/'/g, "\\'")}', '${(s.province||'') + ' ' + (s.city||'')}')">
                     <div class="font-medium">${s.name}</div>
-                    <div class="text-xs text-gray-400">${s.province} ${s.city}</div>
+                    <div class="text-xs text-gray-400">${s.province||''} ${s.city||''} ${s.level||''}</div>
                 </div>`
             ).join('');
         }
@@ -162,7 +322,7 @@ document.getElementById('majorSearch').addEventListener('input', function() {
         } else {
             container.innerHTML = data.map(m =>
                 `<div class="px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-100 dark:border-gray-600 last:border-0"
-                      onclick="selectMajor(${m.id}, '${m.name}', '${m.category || ''}')">
+                      onclick="selectMajor(${m.id}, '${m.name.replace(/'/g, "\\'")}', '${m.category||''}')">
                     <div class="font-medium">${m.name}</div>
                     <div class="text-xs text-gray-400">${m.category || '其他'}</div>
                 </div>`
@@ -201,26 +361,38 @@ async function checkDuplicate() {
 
 // ── 自动定位 ──
 async function detectLocation() {
-    if (!navigator.geolocation) {
-        alert('您的浏览器不支持定位功能');
-        return;
+    // 方案1：浏览器定位
+    if (navigator.geolocation) {
+        try {
+            const pos = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+            });
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const resp = await fetch(`/api/nearby_schools?lat=${lat}&lng=${lng}`);
+            const data = await resp.json();
+            if (data.length > 0) {
+                const nearest = data[0];
+                selectSchool(nearest.id, nearest.name, (nearest.province||'') + ' ' + (nearest.city||''));
+            } else {
+                alert('附近未找到学校，请手动搜索');
+            }
+            return;
+        } catch(e) {
+            // 浏览器定位失败，尝试IP定位
+        }
     }
+    // 方案2：IP定位
     try {
-        const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
-        });
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const resp = await fetch(`/api/nearby_schools?lat=${lat}&lng=${lng}`);
+        const resp = await fetch('/api/detect_location');
         const data = await resp.json();
         if (data.length > 0) {
             const nearest = data[0];
-            selectSchool(nearest.id, nearest.name, nearest.province + ' ' + nearest.city);
-            document.getElementById('schoolSearch').value = nearest.name;
+            selectSchool(nearest.id, nearest.name, (nearest.province||'') + ' ' + (nearest.city||''));
         } else {
-            alert('附近未找到学校，请手动搜索');
+            alert('定位失败，请手动搜索学校');
         }
-    } catch (e) {
+    } catch(e) {
         alert('定位失败，请手动搜索学校');
     }
 }
@@ -241,18 +413,20 @@ document.getElementById('reviewForm').addEventListener('submit', async function(
         return;
     }
 
-    const scores = {};
-    {% for k in dim_keys %}
-    scores['{{ k }}'] = parseInt(document.getElementById('{{ k }}').value);
-    {% endfor %}
+    // 检查是否至少回答了一些问题
+    const answerKeys = Object.keys(answers);
+    if (answerKeys.length === 0) {
+        alert('请至少回答一些问题');
+        return;
+    }
 
     const data = {
         device_id: deviceId,
         school_id: schoolId,
         major_id: majorId,
+        answers: answers,
         comment: document.getElementById('comment').value.trim(),
-        tags: Array.from(selectedTags),
-        ...scores
+        tags: Array.from(selectedTags)
     };
 
     const btn = document.getElementById('submitBtn');
