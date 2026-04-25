@@ -81,6 +81,12 @@
 </section>
 
 <script>
+function formatScore(score) {
+    const s = parseFloat(score);
+    if (isNaN(s)) return '0.0';
+    return s.toFixed(1);
+}
+
 function updateWeight(el) {
     document.getElementById('wval_' + el.dataset.key).textContent = el.value;
 }
@@ -128,10 +134,10 @@ async function loadRanking() {
                 ${r.level ? `<span class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">${r.level}</span>` : ''}
             </td>
             <td class="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">${r.province || ''} ${r.city || ''}</td>
-            <td class="px-4 py-3 text-center"><span class="px-3 py-1 rounded-lg font-bold ${scoreClass}">${r.overall_score}</span></td>
+            <td class="px-4 py-3 text-center"><span class="px-3 py-1 rounded-lg font-bold ${scoreClass}">${formatScore(r.overall_score)}/5</span></td>
             <td class="px-4 py-3 text-center text-sm text-gray-500 hidden lg:table-cell">${r.review_count}</td>
             {% for k in dim_keys %}
-            <td class="px-3 py-3 text-center text-sm hidden xl:table-cell">${r['avg_{{ k }}'] || '-'}</td>
+            <td class="px-3 py-3 text-center text-sm hidden xl:table-cell">${formatScore(r['avg_{{ k }}']) || '-'}/5</td>
             {% endfor %}
         </tr>`;
     }).join('');

@@ -62,6 +62,12 @@
 <script>
 let compareChartInstance = null;
 
+function formatScore(score) {
+    const s = parseFloat(score);
+    if (isNaN(s)) return '0.0';
+    return s.toFixed(1);
+}
+
 async function doCompare() {
     const id1 = document.getElementById('school1').value;
     const id2 = document.getElementById('school2').value;
@@ -148,8 +154,8 @@ async function doCompare() {
     tableHTML += `
         <tr class="border-b border-gray-100 dark:border-gray-700 bg-primary-50/50 dark:bg-primary-900/10">
             <td class="px-4 py-3 font-bold">🏆 综合评分</td>
-            <td class="px-4 py-3 text-center font-bold ${s1Win ? 'text-green-600' : ''}">${s1.avg.overall_score} ${s1Win ? '✓' : ''}</td>
-            <td class="px-4 py-3 text-center font-bold ${s2Win ? 'text-green-600' : ''}">${s2.avg.overall_score} ${s2Win ? '✓' : ''}</td>
+            <td class="px-4 py-3 text-center font-bold ${s1Win ? 'text-green-600' : ''}">${formatScore(s1.avg.overall_score)}/5 ${s1Win ? '✓' : ''}</td>
+            <td class="px-4 py-3 text-center font-bold ${s2Win ? 'text-green-600' : ''}">${formatScore(s2.avg.overall_score)}/5 ${s2Win ? '✓' : ''}</td>
         </tr>`;
 
     dims.forEach(k => {
@@ -160,8 +166,8 @@ async function doCompare() {
         tableHTML += `
         <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <td class="px-4 py-3">${dimsInfo[k].icon} ${dimsInfo[k].name}</td>
-            <td class="px-4 py-3 text-center ${w1 ? 'text-green-600 font-bold' : ''}">${v1} ${w1 ? '✓' : ''}</td>
-            <td class="px-4 py-3 text-center ${w2 ? 'text-green-600 font-bold' : ''}">${v2} ${w2 ? '✓' : ''}</td>
+            <td class="px-4 py-3 text-center ${w1 ? 'text-green-600 font-bold' : ''}">${formatScore(v1)}/5 ${w1 ? '✓' : ''}</td>
+            <td class="px-4 py-3 text-center ${w2 ? 'text-green-600 font-bold' : ''}">${formatScore(v2)}/5 ${w2 ? '✓' : ''}</td>
         </tr>`;
     });
 

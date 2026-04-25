@@ -75,6 +75,21 @@ def score_color_filter(score):
     return "text-red-500"
 
 
+def score_bar_filter(score):
+    """评分进度条对应的CSS类"""
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return "bg-gray-300"
+    if s >= 4:
+        return "bg-green-500"
+    if s >= 3:
+        return "bg-yellow-500"
+    if s >= 2:
+        return "bg-orange-500"
+    return "bg-red-500"
+
+
 def parse_tags(tags_str):
     """解析JSON标签字符串为列表"""
     if not tags_str:
@@ -85,10 +100,39 @@ def parse_tags(tags_str):
         return []
 
 
+def format_score_filter(score):
+    """格式化评分为1位小数"""
+    try:
+        s = float(score)
+        return f"{s:.1f}"
+    except (TypeError, ValueError):
+        return "0.0"
+
+
+def stars_filter(score):
+    """将评分转换为星星显示（满分5分）"""
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        s = 0
+    full_stars = int(s)
+    # 是否有半星（0.5以上显示半星）
+    has_half = (s - full_stars) >= 0.5
+    empty_stars = 5 - full_stars - (1 if has_half else 0)
+    result = "★" * full_stars
+    if has_half:
+        result += "☆"
+    result += "☆" * empty_stars
+    return result
+
+
 app.jinja_env.filters["time_ago"] = time_ago
 app.jinja_env.filters["score_bg"] = score_bg_filter
 app.jinja_env.filters["score_color"] = score_color_filter
 app.jinja_env.filters["parse_tags"] = parse_tags
+app.jinja_env.filters["format_score"] = format_score_filter
+app.jinja_env.filters["stars"] = stars_filter
+app.jinja_env.filters["score_bar"] = score_bar_filter
 
 DATABASE = os.path.join(BASE_DIR, CONFIG["database"])
 
