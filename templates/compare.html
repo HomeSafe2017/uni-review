@@ -5,27 +5,29 @@
 <section class="py-8">
     <div class="max-w-7xl mx-auto px-4">
         <h1 class="text-3xl font-bold mb-2">⚖️ 学校对比</h1>
-        <p class="text-gray-500 dark:text-gray-400 mb-8">选择两所学校，从学生视角全方位对比</p>
+        <p class="text-gray-500 dark:text-gray-400 mb-8">搜索两所学校，从学生视角全方位对比</p>
 
-        <!-- 选择学校 -->
+        <!-- 搜索学校 -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
                 <h2 class="font-bold text-lg mb-4 text-primary-600 dark:text-primary-400">🏫 学校 A</h2>
-                <select id="school1" class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-primary-500 outline-none">
-                    <option value="">选择学校...</option>
-                    {% for school in schools %}
-                    <option value="{{ school.id }}" {% if request.args.get('id1')|int == school.id %}selected{% endif %}>{{ school.name }} ({{ school.province }}{{ school.city }})</option>
-                    {% endfor %}
-                </select>
+                <div class="relative">
+                    <input type="text" id="schoolSearch1" placeholder="搜索学校名称..." autocomplete="off"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all">
+                    <input type="hidden" id="schoolId1">
+                    <div id="schoolResults1" class="absolute z-20 w-full mt-1 bg-white dark:bg-gray-700 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 hidden max-h-60 overflow-y-auto"></div>
+                </div>
+                <div id="selectedSchool1" class="mt-3 hidden p-3 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400"></div>
             </div>
             <div class="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
                 <h2 class="font-bold text-lg mb-4 text-purple-600 dark:text-purple-400">🏫 学校 B</h2>
-                <select id="school2" class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-purple-500 outline-none">
-                    <option value="">选择学校...</option>
-                    {% for school in schools %}
-                    <option value="{{ school.id }}" {% if request.args.get('id2')|int == school.id %}selected{% endif %}>{{ school.name }} ({{ school.province }}{{ school.city }})</option>
-                    {% endfor %}
-                </select>
+                <div class="relative">
+                    <input type="text" id="schoolSearch2" placeholder="搜索学校名称..." autocomplete="off"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all">
+                    <input type="hidden" id="schoolId2">
+                    <div id="schoolResults2" class="absolute z-20 w-full mt-1 bg-white dark:bg-gray-700 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 hidden max-h-60 overflow-y-auto"></div>
+                </div>
+                <div id="selectedSchool2" class="mt-3 hidden p-3 rounded-lg bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400"></div>
             </div>
         </div>
 
@@ -54,13 +56,15 @@
 
         <div id="compareEmpty" class="bg-white dark:bg-gray-800 rounded-xl p-12 border border-gray-200 dark:border-gray-700 text-center">
             <div class="text-5xl mb-4">⚖️</div>
-            <p class="text-gray-500 dark:text-gray-400">选择两所学校开始对比</p>
+            <p class="text-gray-500 dark:text-gray-400">搜索两所学校开始对比</p>
         </div>
     </div>
 </section>
 
 <script>
 let compareChartInstance = null;
+const catKeys = {{ cat_keys | tojson }};
+const catInfo = {{ categories | tojson }};
 
 function formatScore(score) {
     const s = parseFloat(score);
@@ -68,11 +72,65 @@ function formatScore(score) {
     return s.toFixed(1);
 }
 
+// ── 学校搜索（通用） ──
+function setupSchoolSearch(inputId, resultsId, hiddenId, selectedId, color) {
+    let timer;
+    const input = document.getElementById(inputId);
+    const results = document.getElementById(resultsId);
+
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        const q = this.value.trim();
+        if (!q) { results.classList.add('hidden'); return; }
+        timer = setTimeout(async () => {
+            const resp = await fetch('/api/schools?q=' + encodeURIComponent(q));
+            const data = await resp.json();
+            if (data.length === 0) {
+                results.innerHTML = '<div class="p-3 text-gray-400 text-sm">没有找到匹配的学校</div>';
+            } else {
+                results.innerHTML = data.map(s =>
+                    `<div class="px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-100 dark:border-gray-600 last:border-0"
+                          onclick="pickSchool('${inputId}','${hiddenId}','${selectedId}','${color}',${s.id},'${s.name.replace(/'/g,"\\'")}','${(s.province||'')+' '+(s.city||'')}')">
+                        <div class="font-medium">${s.name}</div>
+                        <div class="text-xs text-gray-400">${s.province||''} ${s.city||''}</div>
+                    </div>`
+                ).join('');
+            }
+            results.classList.remove('hidden');
+        }, 300);
+    });
+
+    // 点击外部关闭下拉
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#' + inputId) && !e.target.closest('#' + resultsId)) {
+            results.classList.add('hidden');
+        }
+    });
+}
+
+function pickSchool(inputId, hiddenId, selectedId, color, id, name, location) {
+    document.getElementById(hiddenId).value = id;
+    document.getElementById(inputId).value = name;
+    const sel = document.getElementById(selectedId);
+    sel.textContent = '✅ ' + name + ' (' + location.trim() + ')';
+    sel.classList.remove('hidden');
+    document.getElementById('schoolResults1').classList.add('hidden');
+    document.getElementById('schoolResults2').classList.add('hidden');
+
+    // 两所学校都选好后自动对比
+    if (document.getElementById('schoolId1').value && document.getElementById('schoolId2').value) {
+        doCompare();
+    }
+}
+
+setupSchoolSearch('schoolSearch1', 'schoolResults1', 'schoolId1', 'selectedSchool1', 'primary');
+setupSchoolSearch('schoolSearch2', 'schoolResults2', 'schoolId2', 'selectedSchool2', 'purple');
+
 async function doCompare() {
-    const id1 = document.getElementById('school1').value;
-    const id2 = document.getElementById('school2').value;
+    const id1 = document.getElementById('schoolId1').value;
+    const id2 = document.getElementById('schoolId2').value;
     if (!id1 || !id2) {
-        alert('请选择两所学校');
+        alert('请搜索并选择两所学校');
         return;
     }
 
@@ -89,9 +147,6 @@ async function doCompare() {
     const s1 = data.school1;
     const s2 = data.school2;
     const isDark = document.documentElement.classList.contains('dark');
-
-    const catKeys = {{ cat_keys | tojson }};
-    const catInfo = {{ categories | tojson }};
 
     const labels = catKeys.map(k => catInfo[k].icon + ' ' + catInfo[k].name);
 
@@ -181,9 +236,33 @@ async function doCompare() {
     document.getElementById('compareTable').innerHTML = tableHTML;
 }
 
-// 如果URL有参数，自动触发对比
-if (document.getElementById('school1').value && document.getElementById('school2').value) {
-    doCompare();
-}
+// 如果URL有参数，自动填充并对比
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const id1 = params.get('id1');
+    const id2 = params.get('id2');
+    if (id1 && id2) {
+        // 通过API获取学校名称
+        fetch('/api/schools?q=').then(r => r.json()).then(all => {
+            const s1 = all.find(s => s.id == id1);
+            const s2 = all.find(s => s.id == id2);
+            if (s1) {
+                document.getElementById('schoolId1').value = s1.id;
+                document.getElementById('schoolSearch1').value = s1.name;
+                const sel1 = document.getElementById('selectedSchool1');
+                sel1.textContent = '✅ ' + s1.name + ' (' + (s1.province||'') + ' ' + (s1.city||'') + ')';
+                sel1.classList.remove('hidden');
+            }
+            if (s2) {
+                document.getElementById('schoolId2').value = s2.id;
+                document.getElementById('schoolSearch2').value = s2.name;
+                const sel2 = document.getElementById('selectedSchool2');
+                sel2.textContent = '✅ ' + s2.name + ' (' + (s2.province||'') + ' ' + (s2.city||'') + ')';
+                sel2.classList.remove('hidden');
+            }
+            if (s1 && s2) doCompare();
+        });
+    }
+})();
 </script>
 {% endblock %}

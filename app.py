@@ -613,10 +613,7 @@ def ranking_page():
 # ── 对比 ──
 @app.route("/compare")
 def compare_page():
-    db = get_db()
-    schools = db.execute("SELECT id, name, province, city FROM schools ORDER BY name").fetchall()
     return render_template("compare.html",
-                           schools=schools,
                            categories=CATEGORIES,
                            cat_keys=CAT_KEYS)
 
