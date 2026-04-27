@@ -20,7 +20,7 @@ with open(os.path.join(BASE_DIR, "config.json"), "r", encoding="utf-8") as f:
     CONFIG = json.load(f)
 
 app = Flask(__name__)
-app.secret_key = CONFIG["secret_key"]
+app.secret_key = os.environ.get("SECRET_KEY", CONFIG.get("secret_key", "dev-key"))
 
 
 # ── 类别和问题信息 ────────────────────────────────────────

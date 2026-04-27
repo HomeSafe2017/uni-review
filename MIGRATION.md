@@ -44,11 +44,11 @@ gunicorn -w 2 -b 0.0.0.0:5210 --daemon app:app
 
 ```bash
 # 下载远程数据库到本地
-scp root@43.99.100.102:/root/uni-review/data/uni_review.db ./backup_remote_$(date +%Y%m%d).db
+scp root@YOUR_SERVER_IP:/root/uni-review/data/uni_review.db ./backup_remote_$(date +%Y%m%d).db
 
 # 上传本地数据库到远程（覆盖！谨慎操作）
-scp data/uni_review.db root@43.99.100.102:/root/uni-review/data/uni_review.db
-ssh root@43.99.100.102 "pkill -f 'gunicorn.*app:app'; sleep 1; cd /root/uni-review && gunicorn -w 2 -b 0.0.0.0:5210 --daemon app:app"
+scp data/uni_review.db root@YOUR_SERVER_IP:/root/uni-review/data/uni_review.db
+ssh root@YOUR_SERVER_IP "pkill -f 'gunicorn.*app:app'; sleep 1; cd /root/uni-review && gunicorn -w 2 -b 0.0.0.0:5210 --daemon app:app"
 ```
 
 ## 种子数据重建

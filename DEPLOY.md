@@ -29,7 +29,7 @@ cd /root/uni-review
 # 上传项目文件（从本地）
 # 本地执行：
 tar czf /tmp/uni-review.tar.gz --exclude='__pycache__' --exclude='.git' --exclude='data/uni_review.db' .
-scp /tmp/uni-review.tar.gz root@43.99.100.102:/root/uni-review/
+scp /tmp/uni-review.tar.gz root@YOUR_SERVER_IP:/root/uni-review/
 
 # 服务器执行：
 cd /root/uni-review
@@ -57,7 +57,7 @@ python3 generate_reviews.py
 ```bash
 # 先用Flask开发服务器测试
 python3 app.py
-# 访问 http://43.99.100.102:5210 确认正常后 Ctrl+C 退出
+# 访问 http://YOUR_SERVER_IP:5210 确认正常后 Ctrl+C 退出
 ```
 
 ## Gunicorn 配置
@@ -216,28 +216,28 @@ server {
 
 ```bash
 # 本地打包
-cd /home/homesafe/projects/uni-review
+cd ~/projects/uni-review
 tar czf /tmp/uni-review.tar.gz --exclude='__pycache__' --exclude='.git' --exclude='data' .
 
 # 上传
-scp /tmp/uni-review.tar.gz root@43.99.100.102:/root/uni-review/
+scp /tmp/uni-review.tar.gz root@YOUR_SERVER_IP:/root/uni-review/
 
 # 服务器解压+重启
-ssh root@43.99.100.102 "cd /root/uni-review && tar xzf uni-review.tar.gz && rm -f uni-review.tar.gz && pkill -f 'gunicorn.*app:app'; sleep 1; gunicorn -w 2 -b 0.0.0.0:5210 --daemon app:app"
+ssh root@YOUR_SERVER_IP "cd /root/uni-review && tar xzf uni-review.tar.gz && rm -f uni-review.tar.gz && pkill -f 'gunicorn.*app:app'; sleep 1; gunicorn -w 2 -b 0.0.0.0:5210 --daemon app:app"
 ```
 
 ### 全量更新（含数据库重建）
 
 ```bash
 # 本地打包（包含数据库）
-cd /home/homesafe/projects/uni-review
+cd ~/projects/uni-review
 tar czf /tmp/uni-review.tar.gz --exclude='__pycache__' --exclude='.git' .
 
 # 上传
-scp /tmp/uni-review.tar.gz root@43.99.100.102:/root/uni-review/
+scp /tmp/uni-review.tar.gz root@YOUR_SERVER_IP:/root/uni-review/
 
 # 服务器操作
-ssh root@43.99.100.102
+ssh root@YOUR_SERVER_IP
 cd /root/uni-review
 tar xzf uni-review.tar.gz
 rm -f uni-review.tar.gz
@@ -255,7 +255,7 @@ pkill -f "gunicorn.*app:app"; sleep 1; gunicorn -w 2 -b 0.0.0.0:5210 --daemon ap
 
 ```bash
 # 如果配置了systemd服务
-ssh root@43.99.100.102 "systemctl restart uni-review"
+ssh root@YOUR_SERVER_IP "systemctl restart uni-review"
 ```
 
 ## 常见问题排查
