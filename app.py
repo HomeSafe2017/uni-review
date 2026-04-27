@@ -20,6 +20,17 @@ with open(os.path.join(BASE_DIR, "config.json"), "r", encoding="utf-8") as f:
     CONFIG = json.load(f)
 
 app = Flask(__name__)
+
+# ── Secret Key 自动生成 ──────────────────────────────────
+# 如果 config.json 中的 secret_key 为空，首次启动时自动生成并持久化
+if not CONFIG.get("secret_key"):
+    import secrets
+    CONFIG["secret_key"] = secrets.token_hex(32)
+    config_path = os.path.join(BASE_DIR, "config.json")
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(CONFIG, f, ensure_ascii=False, indent=2)
+    print(f"🔑 已自动生成 secret_key 并保存到 config.json")
+
 app.secret_key = os.environ.get("SECRET_KEY", CONFIG.get("secret_key", "dev-key"))
 
 
@@ -1054,10 +1065,37 @@ def internal_error(e):
 
 
 # ── 启动 ──────────────────────────────────────────────────
+def get_server_ip():
+    """自动获取当前服务器的可访问IP，不硬编码"""
+    import socket
+    try:
+        # 方式1：通过外部API获取公网IP
+        import urllib.request
+        req = urllib.request.Request("http://ip-api.com/json/?fields=query", headers={"User-Agent": "curl/8.0"})
+        resp = urllib.request.urlopen(req, timeout=5)
+        data = json.loads(resp.read())
+        return data.get("query", "0.0.0.0")
+    except Exception:
+        pass
+    try:
+        # 方式2：获取本机局域网IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "0.0.0.0"
+
+SERVER_IP = get_server_ip()
+
 if __name__ == "__main__":
     with app.app_context():
         init_db()
-    print(f"🚀 学之声 - 大学专业测评平台已启动，访问 http://0.0.0.0:{CONFIG['port']}")
+    print(f"🚀 学之声 - 大学专业测评平台已启动")
+    print(f"   🌐 本地:  http://127.0.0.1:{CONFIG['port']}")
+    print(f"   🌍 网络:  http://{SERVER_IP}:{CONFIG['port']}")
     app.run(
         host=CONFIG["host"],
         port=CONFIG["port"],

@@ -3,7 +3,7 @@
   "port": 5210,
   "debug": false,
   "database": "data/uni_review.db",
-  "secret_key": "CHANGE-ME-IN-PRODUCTION",
+  "secret_key": "",
   "categories": {
     "academic": {
       "name": "学业管理",
