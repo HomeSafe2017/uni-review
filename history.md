@@ -24,3 +24,4 @@
 - 2026-04-25: 项目创建，完成全部功能开发
 - 2026-04-25: 假测评数据生成(1432条/316校/78专业) + 专业横向对比模块 + 项目文档(README/DEPLOY/MIGRATION/CONTRIBUTING)
 - 2026-04-25: fix ranking综合分全0 — GROUP_CONCAT默认逗号分隔与JSON内逗号冲突，改用|||分隔符；fix HTTP环境下点赞无效 — crypto.randomUUID()在非安全上下文抛异常，增加Math.random降级
+- 2026-04-29: 审计测评问卷评分逻辑（8大类52问），所有yes_score/no_score极性正确，无加减分标反问题
