@@ -5,3 +5,5 @@ data/
 .env
 .venv/
 search_data/
+generate_*.py
+fix_*.py
