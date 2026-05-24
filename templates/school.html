@@ -69,8 +69,8 @@
                                 <div class="flex items-center text-xs">
                                     <span class="flex-1 text-gray-600 dark:text-gray-400">{{ q.text }}</span>
                                     <span class="ml-2 text-gray-400">{{ stat.total }}人回答</span>
-                                    <span class="ml-2 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">{{ stat.no_pct }}%无</span>
-                                    <span class="ml-1 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">{{ stat.yes_pct }}%有</span>
+                                    <span class="ml-2 px-1.5 py-0.5 rounded {% if q.yes_score > q.no_score %}bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400{% else %}bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400{% endif %}">{{ stat.no_pct }}%无</span>
+                                    <span class="ml-1 px-1.5 py-0.5 rounded {% if q.yes_score > q.no_score %}bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400{% else %}bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400{% endif %}">{{ stat.yes_pct }}%有</span>
                                 </div>
                                 {% endif %}
                                 {% endfor %}
