@@ -1,7 +1,5 @@
 __pycache__/
 *.pyc
-data/
-*.db
 .env
 .venv/
 search_data/
